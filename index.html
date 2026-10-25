@@ -558,7 +558,6 @@ for (const row of (data || [])) {
   if (row.booking_status === "reserved") seat.status = "incoming";
   else if (row.booking_status === "checked_in") seat.status = "occupied";
 }
-  }
   const { data: mine, error: mineError } = await supabaseClient
     .from("bookings")
     .select("id,seat_id,status,reserved_at,check_in_deadline,session_expires_at")

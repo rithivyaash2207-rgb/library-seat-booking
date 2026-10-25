@@ -384,8 +384,7 @@
   .queue-preview-title { color:var(--text-primary); font-size:14px; font-weight:800; line-height:1.35; }
   .queue-preview-sub { color:var(--text-secondary); font-size:11px; line-height:1.5; margin-top:4px; }
   .queue-preview-position { flex-shrink:0; padding:7px 10px; border-radius:10px; background:var(--accent); color:white; font-size:12px; font-weight:800; }
-  .queue-join-button { width:100%; min-height:44px; border:0; border-radius:11px; padding:12px 15px; color:white; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 5px 14px rgba(0,0,0,.10); transition:transform .18s ease, filter .18s ease;background: #245C43;
-color: #FFFFFF; }
+  .queue-join-button { width:100%; min-height:44px; border:0; border-radius:11px; padding:12px 15px; color:white; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 5px 14px rgba(0,0,0,.10); transition:transform .18s ease, filter .18s ease; }
   .queue-join-button:hover { filter:brightness(1.05); transform:translateY(-1px); }
   .queue-leave-button { width:100%; margin-top:8px; min-height:40px; border:1px solid var(--border); border-radius:11px; padding:10px 14px; background:var(--surface); color:var(--text-secondary); font-weight:700; cursor:pointer; }
   .queue-main { flex:1; min-width:0; }
@@ -959,8 +958,6 @@ function joinWaitingList(id) {
   const s = seatById(id); if (!s) return;
   if (hasSeatAlready()) { setNotice("Release your current booking before joining another waiting list.", "error"); render(); return; }
   if (s.status === "free") { setNotice("This seat is available — reserve it directly instead.", "error"); render(); return; }
-  const freeInZone = state.seats.filter(x => x.floorId === s.floorId && x.zoneId === s.zoneId && x.status === "free").length;
-  if (freeInZone > 0) { setNotice(`${freeInZone} seat(s) are still available in this zone. Choose a free seat instead of joining the queue.`, "error"); render(); return; }
   const existing = state.waitingList.find(q => q.studentId === state.studentId && q.floorId === s.floorId && q.zoneId === s.zoneId);
   if (existing) { setNotice(`You're already on this zone's waiting list at position ${zoneQueue(s).findIndex(q=>q.studentId===state.studentId)+1}.`, "success"); render(); return; }
   state.waitingList.push({ studentId: state.studentId, floorId: s.floorId, zoneId: s.zoneId, createdAt: Date.now(), requestedSeatId: id });
@@ -1173,24 +1170,17 @@ function panelBodyHTML(seat) {
   const queue = zoneQueue(seat);
   const myQueuePosition = queue.findIndex(q => q.studentId === state.studentId);
   if (seat.status === "occupied") {
-    const freeInZone = state.seats.filter(
-      x => x.floorId === seat.floorId &&
-           x.zoneId === seat.zoneId &&
-           x.status === "free"
-    ).length;
     const ahead = queue.length;
     return `<p class="panel-text">This seat is occupied right now.</p>
-      ${freeInZone
-        ? `<p class="notice">${freeInZone} seat(s) are available in this zone. Pick a free seat instead.</p>`
-        : `<div class="queue-preview">
-            <div class="queue-preview-icon">⌛</div>
-            <div class="queue-preview-copy">
-              <div class="queue-preview-title">${ahead} ${ahead === 1 ? "person" : "people"} already waiting</div>
-            </div>
-          </div>
-          ${myQueuePosition < 0
-            ? `<button class="queue-join-button" data-action="joinQueue">Join waiting list</button>`
-            : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`}`;
+      <div class="queue-preview">
+        <div class="queue-preview-icon">⌛</div>
+        <div class="queue-preview-copy">
+          <div class="queue-preview-title">${ahead} ${ahead === 1 ? "person" : "people"} already waiting</div>
+        </div>
+      </div>
+      ${myQueuePosition < 0
+        ? `<button class="queue-join-button" data-action="joinQueue">Join waiting list</button>`
+        : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`;
   }
   if (seat.status === "free") {
     const expiredMine = state.lastExpiredReservation && state.lastExpiredReservation.seatId === seat.id && state.lastExpiredReservation.studentId === state.studentId;

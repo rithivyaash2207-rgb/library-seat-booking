@@ -358,7 +358,7 @@
   .queue-card-head .dash-copy { margin:5px 0 0; }
   .dash-title { font-size:13px; font-weight:700; margin:0 0 10px; }
   .dash-copy { color:var(--text-secondary); font-size:12px; line-height:1.55; margin:0; }
-  .student-row { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+  .student-row { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .student-row label { color:var(--text-secondary); font-size:12px; white-space:nowrap; }
   .student-input { min-width:0; flex:1; width:100%; border:1px solid var(--border); border-radius:7px; padding:8px 9px; font:inherit; font-size:12px; }
   .student-name-display { display:flex; flex:1; min-width:0; flex-direction:column; gap:3px; }
@@ -1171,7 +1171,7 @@ function panelBodyHTML(seat) {
   if (seat.status === "incoming") {
     if (mine && r.status === "reserved") {
       const rem = Math.max(0, Math.ceil((r.checkInDeadline-state.now)/1000));
-      return `<p class="panel-text">Your seat is reserved. When you enter the library, scan the single entrance QR to start your 3-hour session.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value">${formatReal(rem)}</span><span class="panel-label">to check in</span></div><div class="btn-row"><button class="btn btn-flex" style="background:var(--yours-border)" data-action="openScanner">Scan entrance QR</button><button class="btn-secondary" data-action="cancelHold">Cancel</button></div>`;
+      return `<p class="panel-text">Your seat is reserved. When you enter the library, use the Scan entrance QR button beside your profile to start your 3-hour session.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value">${formatReal(rem)}</span><span class="panel-label">to check in</span></div><div class="btn-row"><button class="btn btn-flex" style="background:var(--yours-border)" data-action="openScanner">Scan entrance QR</button><button class="btn-secondary" data-action="cancelHold">Cancel</button></div>`;
     }
     if (state.queueOffer && state.queueOffer.seatId === seat.id && state.queueOffer.studentId === state.studentId) {
       return `<p class="panel-text">This seat is being offered to you from the waiting list. Confirm within 5 minutes.</p><button class="btn" style="background:var(--yours-border)" data-action="acceptOffer">Accept seat offer</button>`;
@@ -1216,7 +1216,7 @@ function ticketHTML() {
   const queueCount = queueEntries.length;
   const queueToggle = `<button class="small-btn" data-action="toggleQueue" aria-expanded="${state.queuePanelOpen ? "true" : "false"}" aria-controls="my-queue-panel">${state.queuePanelOpen ? "Hide queue status" : `My Queue Status${queueCount ? ` (${queueCount})` : ""}`}</button>`;
   const queuePanel = state.queuePanelOpen ? `<section class="dash-card queue-status-card" id="my-queue-panel"><div class="queue-card-head"><div><h2 class="dash-title">My Queue Status</h2><p class="dash-copy">Only your own queue entries are shown here.</p></div><button class="panel-close" data-action="toggleQueue" aria-label="Hide queue status">✕</button></div>${queueHTML}</section>` : "";
-  return `<div class="dashboard"><section class="dash-card"><div class="ticket-card-head"><h2 class="dash-title">My booking ticket</h2>${queueToggle}</div><div class="student-row">${state.editingStudentName ? `<label for="student-id">Your name</label><input class="student-input" id="student-id" value="${escapeHTML(state.studentName)}" maxlength="32" autocomplete="name" aria-label="Edit your name"><button class="small-btn primary" data-action="saveStudent">Save</button><button class="small-btn" data-action="cancelEditStudent">Cancel</button>` : `<span class="student-name-display"><span class="student-name-label">Student</span><strong>${escapeHTML(state.studentName)}</strong></span><button class="small-btn" data-action="editStudent">Edit name</button><button class="small-btn" data-action="signOut">Sign out</button>`}</div>${state.notice ? `<div class="notice ${state.noticeType}">${state.notice}</div>` : ""}${ticket}</section>${queuePanel}</div>`;
+  return `<div class="dashboard"><section class="dash-card"><div class="ticket-card-head"><h2 class="dash-title">My booking ticket</h2>${queueToggle}</div><div class="student-row">${state.editingStudentName ? `<label for="student-id">Your name</label><input class="student-input" id="student-id" value="${escapeHTML(state.studentName)}" maxlength="32" autocomplete="name" aria-label="Edit your name"><button class="small-btn primary" data-action="saveStudent">Save</button><button class="small-btn" data-action="cancelEditStudent">Cancel</button>` : `<span class="student-name-display"><span class="student-name-label">Student</span><strong>${escapeHTML(state.studentName)}</strong></span><button class="small-btn primary" data-action="openScanner">Scan entrance QR</button><button class="small-btn" data-action="editStudent">Edit name</button><button class="small-btn" data-action="signOut">Sign out</button>`}</div>${state.notice ? `<div class="notice ${state.noticeType}">${state.notice}</div>` : ""}${ticket}</section>${queuePanel}</div>`;
 }
 let seatQrScanner = null;
 function showScannerError(message) {
@@ -1234,7 +1234,7 @@ function showScannerError(message) {
 }
 function scannerModalHTML() {
   if (!state.scannerOpen) return "";
-  return `<div class="scanner-backdrop" role="presentation"><section class="scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div class="scanner-head"><h2 class="scanner-title" id="scanner-title">Scan library entrance QR</h2><button class="panel-close" data-action="closeScanner" aria-label="Close scanner">✕</button></div><p class="scanner-copy">Allow camera access, then scan the single QR code displayed at the library entrance. This confirms your own active reservation.</p><div id="qr-reader"></div>${state.scannerError ? `<p class="scanner-error" role="alert">${escapeHTML(state.scannerError)}</p>` : ""}<div class="scanner-actions"><button class="btn-secondary" data-action="closeScanner">Cancel</button>${state.scannerFailed ? `<button class="btn" data-action="retryScanner">Try camera again</button>` : ""}</div></section></div>`;
+  return `<div class="scanner-backdrop" role="presentation"><section class="scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div class="scanner-head"><h2 class="scanner-title" id="scanner-title">Scan library entrance QR</h2><button class="panel-close" data-action="closeScanner" aria-label="Close scanner">✕</button></div><p class="scanner-copy">Allow camera access, then scan the single QR code displayed at the library entrance. You will see a confirmation message when check-in succeeds.</p><div id="qr-reader"></div>${state.scannerError ? `<p class="scanner-error" role="alert">${escapeHTML(state.scannerError)}</p>` : ""}<div class="scanner-actions"><button class="btn-secondary" data-action="closeScanner">Cancel</button>${state.scannerFailed ? `<button class="btn" data-action="retryScanner">Try camera again</button>` : ""}</div></section></div>`;
 }
 function scannerModalMount() {
   if (!state.scannerOpen || seatQrScanner || state.scannerFailed || !document.getElementById("qr-reader")) return;
@@ -1392,7 +1392,15 @@ document.addEventListener("click", async (e) => {
   if (action === "close") return closePanel();
   if (action === "lockLibrary") return lockFromLibrary(id);
   if (action === "confirmArrived") return checkIn(id, false);
-  if (action === "openScanner") return openSeatScanner();
+  if (action === "openScanner") {
+    const booking = activeReservation();
+    if (!booking || booking.status !== "reserved") {
+      setNotice("Reserve a seat first. Then scan the entrance QR to confirm your arrival.", "error");
+      render();
+      return;
+    }
+    return openSeatScanner();
+  }
   if (action === "closeScanner") return closeSeatScanner();
   if (action === "retryScanner") { state.scannerFailed = false; state.scannerError = ""; render(); scannerModalMount(); return; }
   if (action === "cancelHold") return cancelHold(id);
@@ -1411,6 +1419,7 @@ document.addEventListener("click", async (e) => {
   }
   if (action === "cancelEditStudent") {
     state.editingStudentName = false;
+    setNotice("Name editing cancelled.", "success");
     render();
     return;
   }
@@ -1436,14 +1445,14 @@ document.addEventListener("click", async (e) => {
     const r = activeReservation(); if (r) return r.status === "reserved" ? cancelHold(r.seatId) : exitForDay(r.seatId);
     return;
   }
-  if (action === "printTicket") { window.print(); return; }
+  if (action === "printTicket") { setNotice("Opening your booking ticket for printing.", "success"); render(); window.print(); return; }
   if (action === "acceptOffer") {
     const offer = state.queueOffer; const s = offer && seatById(offer.seatId);
     if (!offer || !s || offer.studentId !== state.studentId || Date.now() > offer.expiresAt) { setNotice("This seat offer has expired or belongs to another student.", "error"); render(); return; }
     if (hasSeatAlready()) { setNotice("Release your existing booking before accepting the offer.", "error"); render(); return; }
     state.reservation = { bookingId: makeBookingId(), studentId: state.studentId, seatId: s.id, floorId: s.floorId, zoneId: s.zoneId, status: "reserved", reservedAt: Date.now(), checkInDeadline: Date.now()+15*60*1000, expiresAt: null };
     s.status = "incoming"; s.timer = {startedAt:Date.now(),demoDurationMs:15*60*1000,realDurationSec:15*60,purpose:"checkin"}; state.queueOffer = null;
-    setNotice("Seat offer accepted. Scan the seat QR within 15 minutes to start your session.", "success"); persistState(); render(); return;
+    setNotice("Seat offer accepted. Scan the library entrance QR within 15 minutes to start your session.", "success"); persistState(); render(); return;
   }
 });
 

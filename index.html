@@ -505,6 +505,7 @@
 <body>
 <div id="app"></div>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /*
   SMART LIBRARY SEAT AVAILABILITY & OCCUPANCY MONITORING SYSTEM
@@ -524,6 +525,96 @@
     - No blocked/red state is shown in the interface.
 */
 // ---------- config ----------
+
+const SUPABASE_URL = "https://krpnszbyxitdqfsznugq.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_H-WORC6g4hhEfPw_-hKYzw_J26BmBod";
+const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+let authUser = null;
+let authMode = "signup";
+let authBusy = false;
+let authMessage = "";
+let authMessageType = "";
+
+function showAuthMessage(message, type="error") {
+  authMessage = message;
+  authMessageType = type;
+  render();
+}
+
+async function loadSharedBookings() {
+  if (!authUser) return;
+  const { data, error } = await supabaseClient.rpc("get_active_seat_status");
+  if (error) {
+    setNotice("Could not refresh shared seat status: " + error.message, "error");
+    return;
+  }
+  state.seats.forEach(seat => {
+    if (seat.status !== "yours" && seat.status !== "incoming") seat.status = "free";
+  });
+  for (const row of (data || [])) {
+    const seat = seatById(row.seat_id);
+    if (!seat) continue;
+    if (row.booking_status === "checked_in") seat.status = "occupied";
+    else seat.status = "incoming";
+  }
+  const { data: mine, error: mineError } = await supabaseClient
+    .from("bookings")
+    .select("id,seat_id,status,reserved_at,check_in_deadline,session_expires_at")
+    .eq("user_id", authUser.id)
+    .in("status", ["reserved", "checked_in"])
+    .order("reserved_at", { ascending: false })
+    .limit(1);
+  if (!mineError && mine && mine.length) {
+    const b = mine[0];
+    const seat = seatById(b.seat_id);
+    if (seat) {
+      seat.status = b.status === "checked_in" ? "yours" : "incoming";
+      state.reservation = {
+        bookingId: b.id,
+        studentId: authUser.id,
+        seatId: b.seat_id,
+        floorId: seat.floorId,
+        zoneId: seat.zoneId,
+        status: b.status === "checked_in" ? "active" : "reserved",
+        reservedAt: new Date(b.reserved_at).getTime(),
+        checkInDeadline: b.check_in_deadline ? new Date(b.check_in_deadline).getTime() : null,
+        expiresAt: b.session_expires_at ? new Date(b.session_expires_at).getTime() : null
+      };
+    }
+  } else {
+    state.reservation = null;
+  }
+  persistState();
+}
+
+async function refreshAndRender() {
+  await loadSharedBookings();
+  render();
+}
+
+function authScreenHTML() {
+  const signup = authMode === "signup";
+  return `<main class="welcome-screen">
+    <section class="welcome-card" aria-labelledby="welcome-title">
+      <div class="welcome-mark" aria-hidden="true">⌂</div>
+      <div class="welcome-eyebrow">Central Library</div>
+      <h1 class="welcome-title" id="welcome-title">${signup ? "Create your library account." : "Welcome back."}</h1>
+      <p class="welcome-copy">Sign in to reserve seats and see live booking updates across devices.</p>
+      <form id="auth-form" novalidate>
+        ${signup ? `<label class="welcome-label" for="auth-name">Your name</label><input class="welcome-input" id="auth-name" name="name" type="text" maxlength="32" autocomplete="name" placeholder="Enter your name" required>` : ""}
+        <label class="welcome-label" for="auth-email">Email</label>
+        <input class="welcome-input" id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com" required>
+        <label class="welcome-label" for="auth-password">Password</label>
+        <input class="welcome-input" id="auth-password" name="password" type="password" minlength="6" autocomplete="${signup ? "new-password" : "current-password"}" placeholder="At least 6 characters" required>
+        ${authMessage ? `<div class="welcome-error" role="alert">${escapeHTML(authMessage)}</div>` : ""}
+        <button class="welcome-submit" type="submit" ${authBusy ? "disabled" : ""}>${authBusy ? "Please wait…" : (signup ? "Create account" : "Sign in")} <span aria-hidden="true">→</span></button>
+      </form>
+      <button class="small-btn" id="auth-switch" type="button" style="margin-top:12px;width:100%">${signup ? "Already have an account? Sign in" : "New here? Create an account"}</button>
+      <p class="welcome-footnote">Your account keeps your bookings private and synced.</p>
+    </section>
+  </main>`;
+}
+
 const STATUS_META = {
   free:     { label: "Free",                       varName: "free" },
   occupied: { label: "Occupied",                    varName: "occupied" },
@@ -771,66 +862,81 @@ function openSeat(id) {
 }
 function closePanel() { state.selectedId = null; state.lockError = ""; render(); }
 function switchFloor(id) { state.activeFloor = id; closePanel(); }
-function lockFromLibrary(id) {
+async function lockFromLibrary(id) {
   const s = seatById(id);
-  if (!s) return;
-  if (s.status !== "free") { setNotice("That seat is no longer available. Join the zone waiting list instead.", "error"); render(); return; }
-  if (hasSeatAlready()) { state.lockError = "You already have an active booking. Release it before booking another seat."; render(); return; }
-  const now = Date.now();
-  state.reservation = { bookingId: makeBookingId(), studentId: state.studentId, seatId: id, floorId: s.floorId, zoneId: s.zoneId, status: "reserved", reservedAt: now, checkInDeadline: now + 15*60*1000, expiresAt: null };
-  s.status = "incoming";
-  s.timer = { startedAt: now, demoDurationMs: 15*60*1000, realDurationSec: 15*60, purpose: "checkin" };
+  if (!s || !authUser) return;
+  if (s.status !== "free") {
+    setNotice("That seat is no longer available. Choose another free seat.", "error");
+    render();
+    return;
+  }
+  if (hasSeatAlready()) {
+    state.lockError = "You already have an active booking. Release it before booking another seat.";
+    render();
+    return;
+  }
+  const { data, error } = await supabaseClient.rpc("reserve_seat", { p_seat_id: id });
+  if (error) {
+    setNotice(error.message, "error");
+    await refreshAndRender();
+    return;
+  }
+  await loadSharedBookings();
+  state.selectedId = id;
   setNotice("Seat reserved. Scan the QR code at your seat within 15 minutes to start your 3-hour session.", "success");
-  persistState(); render();
+  render();
 }
 function confirmArrived(id) { checkIn(id, false); }
-function checkIn(id, fromQr=false) {
+async function checkIn(id, fromQr=false) {
   const s = seatById(id);
-  const r = activeReservation();
-  if (!s) { setNotice("This QR code does not match a known seat.", "error"); render(); return; }
-  if (!r || r.seatId !== id || r.studentId !== state.studentId) {
-    const expired = state.lastExpiredReservation;
-    if (fromQr && expired && expired.seatId === id && expired.studentId === state.studentId && s.status === "free") {
-      if (zoneQueue(s).length) {
-        promoteNextWaiter(s);
-        setNotice("A student is waiting for this zone, so the seat cannot be renewed. Join the queue for the next available seat.", "error");
-      } else {
-        state.reservation = { ...expired, bookingId: makeBookingId(), status: "active", reservedAt: Date.now(), checkInDeadline: null, expiresAt: Date.now()+3*60*60*1000 };
-        state.lastExpiredReservation = null;
-        s.status = "yours"; s.timer = { startedAt: Date.now(), demoDurationMs: 3*60*60*1000, realDurationSec: 3*60*60, purpose: "session" };
-        setNotice("Renewal confirmed. Your new 3-hour session has started.", "success");
-      }
-    } else {
-      setNotice("No valid reservation for this seat and student. Reserve online first.", "error");
-    }
-    persistState(); render(); return;
+  if (!s) {
+    setNotice("This QR code does not match a known seat.", "error");
+    render();
+    return;
   }
-  if (r.status === "reserved") {
-    const now = Date.now();
-    r.status = "active"; r.checkedInAt = now; r.checkInDeadline = null; r.expiresAt = now + 3*60*60*1000;
-    s.status = "yours"; s.timer = { startedAt: now, demoDurationMs: 3*60*60*1000, realDurationSec: 3*60*60, purpose: "session" };
-    setNotice(fromQr ? "QR verified. Check-in successful — your 3-hour session has started." : "Check-in confirmed. Your 3-hour session has started.", "success");
-  } else if (r.status === "active") {
-    setNotice("You're already checked in. Your session ends at " + new Date(r.expiresAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) + ".", "success");
+  if (!authUser) {
+    setNotice("Sign in before scanning a seat QR code.", "error");
+    render();
+    return;
   }
-  persistState(); render();
+  const { error } = await supabaseClient.rpc("check_in_seat", { p_seat_id: id });
+  if (error) {
+    setNotice(error.message, "error");
+    await refreshAndRender();
+    return;
+  }
+  await loadSharedBookings();
+  state.activeFloor = s.floorId;
+  state.selectedId = id;
+  setNotice(fromQr ? "QR verified. Check-in successful — your 3-hour session has started." : "Check-in confirmed. Your 3-hour session has started.", "success");
+  render();
 }
-function cancelHold(id) {
+async function cancelHold(id) {
   const r = activeReservation();
   if (!r || r.seatId !== id || r.status !== "reserved") return;
-  const s = seatById(id); if (s) { s.status = "free"; clearSeatTimer(s); }
+  const { error } = await supabaseClient.rpc("release_seat", { p_seat_id: id });
+  if (error) {
+    setNotice(error.message, "error");
+    render();
+    return;
+  }
   state.reservation = null;
-  if (s) promoteNextWaiter(s);
-  setNotice("Reservation cancelled.", "success"); persistState(); render();
+  setNotice("Reservation cancelled.", "success");
+  await refreshAndRender();
 }
-function exitForDay(id) {
+async function exitForDay(id) {
   const r = activeReservation();
   if (!r || r.seatId !== id) return;
-  const s = seatById(id); if (s) { s.status = "free"; clearSeatTimer(s); }
-  state.lastExpiredReservation = { ...r, status: "expired", expiredAt: Date.now() };
+  const { error } = await supabaseClient.rpc("release_seat", { p_seat_id: id });
+  if (error) {
+    setNotice(error.message, "error");
+    render();
+    return;
+  }
   state.reservation = null;
-  if (s) promoteNextWaiter(s);
-  state.selectedId = null; setNotice("Seat released. Thanks for freeing it for another student.", "success"); persistState(); render();
+  state.selectedId = null;
+  setNotice("Seat released. Thanks for freeing it for another student.", "success");
+  await refreshAndRender();
 }
 function exitForBreak(id) {
   setNotice("For the 3-hour booking model, your seat stays reserved while you take a short break. The session timer continues.", "success"); render();
@@ -862,12 +968,20 @@ function promoteNextWaiter(freedSeat) {
   state.queueOffer = { studentId: next.studentId, seatId: freedSeat.id, expiresAt: Date.now()+5*60*1000 };
   setNotice(`The seat was offered to ${next.studentId}, next on the waiting list.`, "success");
 }
-function updateStudentId(value) {
+async function updateStudentId(value) {
   const name = value.trim().replace(/\s+/g, " ");
-  if (!name || name.length > 32) return;
+  if (!name || name.length > 32 || !authUser) return;
+  const { error } = await supabaseClient.auth.updateUser({ data: { full_name: name } });
+  if (error) {
+    setNotice(error.message, "error");
+    render();
+    return;
+  }
   state.studentName = name;
-  state.studentId = name.toUpperCase();
-  persistState(); render();
+  state.studentId = authUser.id;
+  state.editingStudentName = false;
+  persistState();
+  render();
 }
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, ch => ({"&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;"}[ch]));
@@ -1092,7 +1206,7 @@ function ticketHTML() {
   const queueCount = queueEntries.length;
   const queueToggle = `<button class="small-btn" data-action="toggleQueue" aria-expanded="${state.queuePanelOpen ? "true" : "false"}" aria-controls="my-queue-panel">${state.queuePanelOpen ? "Hide queue status" : `My Queue Status${queueCount ? ` (${queueCount})` : ""}`}</button>`;
   const queuePanel = state.queuePanelOpen ? `<section class="dash-card queue-status-card" id="my-queue-panel"><div class="queue-card-head"><div><h2 class="dash-title">My Queue Status</h2><p class="dash-copy">Only your own queue entries are shown here.</p></div><button class="panel-close" data-action="toggleQueue" aria-label="Hide queue status">✕</button></div>${queueHTML}</section>` : "";
-  return `<div class="dashboard"><section class="dash-card"><div class="ticket-card-head"><h2 class="dash-title">My booking ticket</h2>${queueToggle}</div><div class="student-row">${state.editingStudentName ? `<label for="student-id">Your name</label><input class="student-input" id="student-id" value="${escapeHTML(state.studentName)}" maxlength="32" autocomplete="name" aria-label="Edit your name"><button class="small-btn primary" data-action="saveStudent">Save</button><button class="small-btn" data-action="cancelEditStudent">Cancel</button>` : `<span class="student-name-display"><span class="student-name-label">Student</span><strong>${escapeHTML(state.studentName)}</strong></span><button class="small-btn" data-action="editStudent">Edit name</button>`}</div>${state.notice ? `<div class="notice ${state.noticeType}">${state.notice}</div>` : ""}${ticket}</section>${queuePanel}</div>`;
+  return `<div class="dashboard"><section class="dash-card"><div class="ticket-card-head"><h2 class="dash-title">My booking ticket</h2>${queueToggle}</div><div class="student-row">${state.editingStudentName ? `<label for="student-id">Your name</label><input class="student-input" id="student-id" value="${escapeHTML(state.studentName)}" maxlength="32" autocomplete="name" aria-label="Edit your name"><button class="small-btn primary" data-action="saveStudent">Save</button><button class="small-btn" data-action="cancelEditStudent">Cancel</button>` : `<span class="student-name-display"><span class="student-name-label">Student</span><strong>${escapeHTML(state.studentName)}</strong></span><button class="small-btn" data-action="editStudent">Edit name</button><button class="small-btn" data-action="signOut">Sign out</button>`}</div>${state.notice ? `<div class="notice ${state.noticeType}">${state.notice}</div>` : ""}${ticket}</section>${queuePanel}</div>`;
 }
 let seatQrScanner = null;
 function showScannerError(message) {
@@ -1173,25 +1287,8 @@ function openSeatScanner() {
 
 function render() {
   state.now = Date.now();
-  if (!state.studentName) {
-    document.getElementById("app").innerHTML = `
-      <main class="welcome-screen">
-        <section class="welcome-card" aria-labelledby="welcome-title">
-          <div class="welcome-mark" aria-hidden="true">⌂</div>
-          <div class="welcome-eyebrow">Central Library</div>
-          <h1 class="welcome-title" id="welcome-title">Welcome to your study space.</h1>
-          <p class="welcome-copy">Enter your name to explore the library, choose a seat, and manage your booking.</p>
-          <form id="welcome-form" novalidate>
-            <label class="welcome-label" for="welcome-name">What should we call you?</label>
-            <input class="welcome-input" id="welcome-name" name="name" type="text" maxlength="32" autocomplete="given-name" placeholder="Enter your name" required autofocus>
-            ${state.welcomeError ? `<div class="welcome-error" role="alert">${state.welcomeError}</div>` : ""}
-            <button class="welcome-submit" type="submit">Enter library <span aria-hidden="true">→</span></button>
-          </form>
-          <p class="welcome-footnote">Demo access · Your name is saved in this browser.</p>
-        </section>
-      </main>`;
-    const welcomeInput = document.getElementById("welcome-name");
-    if (welcomeInput) welcomeInput.focus();
+  if (!authUser) {
+    document.getElementById("app").innerHTML = authScreenHTML();
     return;
   }
   resolveTimers();
@@ -1209,20 +1306,60 @@ function render() {
   persistState();
 }
 // ---------- events ----------
-document.addEventListener("submit", (e) => {
-  if (e.target.id !== "welcome-form") return;
+document.addEventListener("submit", async (e) => {
+  if (e.target.id !== "auth-form") return;
   e.preventDefault();
-  const input = document.getElementById("welcome-name");
-  const name = (input?.value || "").trim().replace(/\s+/g, " ");
-  if (!name) { state.welcomeError = "Please enter your name to continue."; render(); return; }
-  if (name.length > 32) { state.welcomeError = "Please use a name with 32 characters or fewer."; render(); return; }
-  state.studentName = name;
-  state.studentId = name.toUpperCase();
-  state.welcomeError = "";
-  persistState();
+  if (authBusy) return;
+  const name = (document.getElementById("auth-name")?.value || "").trim().replace(/\s+/g, " ");
+  const email = (document.getElementById("auth-email")?.value || "").trim();
+  const password = document.getElementById("auth-password")?.value || "";
+  if (authMode === "signup" && (!name || name.length > 32)) {
+    showAuthMessage("Enter your name (up to 32 characters).");
+    return;
+  }
+  if (!email || password.length < 6) {
+    showAuthMessage("Enter a valid email and a password with at least 6 characters.");
+    return;
+  }
+  authBusy = true;
+  authMessage = "";
   render();
+  let result;
+  if (authMode === "signup") {
+    result = await supabaseClient.auth.signUp({
+      email,
+      password,
+      options: { data: { full_name: name } }
+    });
+  } else {
+    result = await supabaseClient.auth.signInWithPassword({ email, password });
+  }
+  authBusy = false;
+  if (result.error) {
+    showAuthMessage(result.error.message);
+    return;
+  }
+  if (authMode === "signup" && !result.data.session) {
+    showAuthMessage("Account created. If email confirmation is enabled in Supabase, confirm your email and then sign in.", "success");
+    authMessageType = "success";
+    render();
+    return;
+  }
+  authUser = result.data.user;
+  state.studentId = authUser.id;
+  state.studentName = authUser.user_metadata?.full_name || email.split("@")[0];
+  authMessage = "";
+  await refreshAndRender();
 });
-document.addEventListener("click", (e) => {
+
+document.addEventListener("click", async (e) => {
+  if (e.target.closest("#auth-switch")) {
+    authMode = authMode === "signup" ? "signin" : "signup";
+    authMessage = "";
+    render();
+    return;
+  }
+
   const seatBtn = e.target.closest("[data-seat]");
   if (seatBtn) { openSeat(seatBtn.dataset.seat); return; }
   const floorBtn = e.target.closest("[data-floor]");
@@ -1231,6 +1368,17 @@ document.addEventListener("click", (e) => {
   if (!actionEl) return;
   const action = actionEl.dataset.action;
   const id = state.selectedId;
+  if (action === "signOut") {
+    await supabaseClient.auth.signOut();
+    authUser = null;
+    state.studentName = "";
+    state.studentId = "";
+    state.reservation = null;
+    authMode = "signin";
+    authMessage = "";
+    render();
+    return;
+  }
   if (action === "close") return closePanel();
   if (action === "lockLibrary") return lockFromLibrary(id);
   if (action === "confirmArrived") return checkIn(id, false);
@@ -1259,7 +1407,7 @@ document.addEventListener("click", (e) => {
   if (action === "saveStudent") {
     const input = document.getElementById("student-id");
     if (input) {
-      const name = input.value.trim().replace(/\\s+/g, " ");
+      const name = input.value.trim().replace(/\s+/g, " ");
       if (!name || name.length > 32) {
         input.setCustomValidity("Enter a name between 1 and 32 characters.");
         input.reportValidity();
@@ -1316,6 +1464,44 @@ setInterval(() => {
   const changed = resolveTimers();
   if (changed) render(); else updateVisibleTimerText();
 }, 1000);
+
+setInterval(() => {
+  if (authUser && !document.hidden) loadSharedBookings().then(render);
+}, 15000);
+
+supabaseClient.auth.getSession().then(async ({ data, error }) => {
+  if (error) {
+    showAuthMessage(error.message);
+    return;
+  }
+  authUser = data.session?.user || null;
+  if (authUser) {
+    state.studentId = authUser.id;
+    state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student";
+    await loadSharedBookings();
+    render();
+    handleQrCheckin();
+  } else {
+    render();
+  }
+});
+
+supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+  authUser = session?.user || null;
+  if (authUser) {
+    state.studentId = authUser.id;
+    state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student";
+    await loadSharedBookings();
+  }
+  render();
+});
+
+supabaseClient
+  .channel("library-seat-bookings-live")
+  .on("postgres_changes", { event: "*", schema: "public", table: "bookings" }, async () => {
+    if (authUser) await refreshAndRender();
+  })
+  .subscribe();
 
 render();
 handleQrCheckin();

@@ -1172,12 +1172,24 @@ function panelBodyHTML(seat) {
   const queue = zoneQueue(seat);
   const myQueuePosition = queue.findIndex(q => q.studentId === state.studentId);
   if (seat.status === "occupied") {
-    const freeInZone = state.seats.filter(x => x.floorId === seat.floorId && x.zoneId === seat.zoneId && x.status === "free").length;
+    const freeInZone = state.seats.filter(
+      x => x.floorId === seat.floorId &&
+           x.zoneId === seat.zoneId &&
+           x.status === "free"
+    ).length;
     const ahead = queue.length;
-    const queueInfo = myQueuePosition >= 0
-      ? `<div class="queue-preview"><div class="queue-preview-icon">⌛</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Your queue status</div><div class="queue-preview-title">You're #${myQueuePosition + 1} in line</div><div class="queue-preview-sub">${myQueuePosition === 0 ? "You're next when a seat opens up." : `${myQueuePosition} ${myQueuePosition === 1 ? "person" : "people"} ahead of you in this zone.`}</div></div><div class="queue-preview-position">#${myQueuePosition + 1}</div></div>`
-      : `<div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Before you join</div><div class="queue-preview-title">${ahead === 0 ? "You'll be first in line" : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`}</div><div class="queue-preview-sub">Your position after joining: #${ahead + 1}. Queue is for this zone.</div></div><div class="queue-preview-position">#${ahead + 1}</div></div>`;
-    return `<p class="panel-text">This seat is occupied right now.</p>${freeInZone ? `<p class="notice">${freeInZone} seat(s) are available in this zone. Pick a free seat instead.</p>` : `${queueInfo}${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue" style="background:var(--accent)">Join waiting list <span aria-hidden="true">→</span></button>` : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`}`;
+    return `<p class="panel-text">This seat is occupied right now.</p>
+      ${freeInZone
+        ? `<p class="notice">${freeInZone} seat(s) are available in this zone. Pick a free seat instead.</p>`
+        : `<div class="queue-preview">
+            <div class="queue-preview-icon">⌛</div>
+            <div class="queue-preview-copy">
+              <div class="queue-preview-title">${ahead} ${ahead === 1 ? "person" : "people"} already waiting</div>
+            </div>
+          </div>
+          ${myQueuePosition < 0
+            ? `<button class="queue-join-button" data-action="joinQueue">Join waiting list</button>`
+            : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`}`;
   }
   if (seat.status === "free") {
     const expiredMine = state.lastExpiredReservation && state.lastExpiredReservation.seatId === seat.id && state.lastExpiredReservation.studentId === state.studentId;
@@ -1192,10 +1204,16 @@ function panelBodyHTML(seat) {
       return `<p class="panel-text">This seat is being offered to you from the waiting list. Confirm within 5 minutes.</p><button class="btn" style="background:var(--yours-border)" data-action="acceptOffer">Accept seat offer</button>`;
     }
     const ahead = queue.length;
-    const queueInfo = myQueuePosition >= 0
-      ? `<div class="queue-preview"><div class="queue-preview-icon">⌛</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Your queue status</div><div class="queue-preview-title">You're #${myQueuePosition + 1} in line</div><div class="queue-preview-sub">${myQueuePosition === 0 ? "You're next when a seat opens up." : `${myQueuePosition} ${myQueuePosition === 1 ? "person" : "people"} ahead of you in this zone.`}</div></div><div class="queue-preview-position">#${myQueuePosition + 1}</div></div>`
-      : `<div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Before you join</div><div class="queue-preview-title">${ahead === 0 ? "You'll be first in line" : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`}</div><div class="queue-preview-sub">Your position after joining: #${ahead + 1}. Queue is for this zone.</div></div><div class="queue-preview-position">#${ahead + 1}</div></div>`;
-    return `<p class="panel-text">Reserved or temporarily held by another student.</p>${queueInfo}${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue" style="background:var(--accent)">Join waiting list <span aria-hidden="true">→</span></button>` : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`;
+    return `<p class="panel-text">Reserved or temporarily held by another student.</p>
+      <div class="queue-preview">
+        <div class="queue-preview-icon">⌛</div>
+        <div class="queue-preview-copy">
+          <div class="queue-preview-title">${ahead} ${ahead === 1 ? "person" : "people"} already waiting</div>
+        </div>
+      </div>
+      ${myQueuePosition < 0
+        ? `<button class="queue-join-button" data-action="joinQueue">Join waiting list</button>`
+        : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`;
   }
   if (seat.status === "yours" && mine && r.status === "active") {
     const rem = Math.max(0, Math.ceil((r.expiresAt-state.now)/1000));

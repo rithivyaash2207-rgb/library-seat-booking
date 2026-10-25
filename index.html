@@ -884,7 +884,7 @@ async function lockFromLibrary(id) {
   }
   await loadSharedBookings();
   state.selectedId = id;
-  setNotice("Seat reserved. Scan the QR code at your seat within 15 minutes to start your 3-hour session.", "success");
+  setNotice("Seat reserved. When you enter the library, scan the single entrance QR within 15 minutes to start your 3-hour session.", "success");
   render();
 }
 function confirmArrived(id) { checkIn(id, false); }
@@ -989,12 +989,21 @@ function escapeHTML(value) {
 }
 function handleQrCheckin() {
   const params = new URLSearchParams(window.location.search);
-  const id = params.get("checkin");
-  if (!id) return;
+  const token = params.get("checkin");
+  if (token !== "entrance" || !authUser) return;
   window.history.replaceState({}, document.title, window.location.pathname);
-  state.activeFloor = seatById(id)?.floorId || state.activeFloor;
-  state.selectedId = id;
-  checkIn(id, true);
+  const booking = activeReservation();
+  if (!booking || booking.status !== "reserved") {
+    setNotice("Sign in and reserve a seat before scanning the library entrance QR.", "error");
+    render();
+    return;
+  }
+  const seat = seatById(booking.seatId);
+  if (seat) {
+    state.activeFloor = seat.floorId;
+    state.selectedId = seat.id;
+  }
+  checkIn(booking.seatId, true);
 }
 
 // ---------- rendering ----------
@@ -1157,12 +1166,12 @@ function panelBodyHTML(seat) {
   }
   if (seat.status === "free") {
     const expiredMine = state.lastExpiredReservation && state.lastExpiredReservation.seatId === seat.id && state.lastExpiredReservation.studentId === state.studentId;
-    return `${state.lockError ? `<p class="panel-error">${state.lockError}</p>` : ""}<p class="panel-text">This seat is available for a 3-hour session.</p>${expiredMine ? `<p class="notice">Your previous session ended. Scan the QR at the seat to renew if nobody is waiting, or reserve it again.</p><button class="btn" style="background:var(--accent);margin-bottom:8px" data-action="openScanner">Scan seat QR to renew</button>` : ""}<button class="btn" style="background:var(--yours-border)" data-action="lockLibrary">Reserve seat · 3 hours</button>`;
+    return `${state.lockError ? `<p class="panel-error">${state.lockError}</p>` : ""}<p class="panel-text">This seat is available for a 3-hour session.</p>${expiredMine ? `<p class="notice">Your previous session ended. Scan the single entrance QR to check in again if the seat is still available.</p><button class="btn" style="background:var(--accent);margin-bottom:8px" data-action="openScanner">Scan entrance QR to renew</button>` : ""}<button class="btn" style="background:var(--yours-border)" data-action="lockLibrary">Reserve seat · 3 hours</button>`;
   }
   if (seat.status === "incoming") {
     if (mine && r.status === "reserved") {
       const rem = Math.max(0, Math.ceil((r.checkInDeadline-state.now)/1000));
-      return `<p class="panel-text">Your seat is reserved. When you arrive at the desk, scan the physical QR code attached to that seat to start your 3-hour session.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value">${formatReal(rem)}</span><span class="panel-label">to check in</span></div><div class="btn-row"><button class="btn btn-flex" style="background:var(--yours-border)" data-action="openScanner">Scan seat QR</button><button class="btn-secondary" data-action="cancelHold">Cancel</button></div>`;
+      return `<p class="panel-text">Your seat is reserved. When you enter the library, scan the single entrance QR to start your 3-hour session.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value">${formatReal(rem)}</span><span class="panel-label">to check in</span></div><div class="btn-row"><button class="btn btn-flex" style="background:var(--yours-border)" data-action="openScanner">Scan entrance QR</button><button class="btn-secondary" data-action="cancelHold">Cancel</button></div>`;
     }
     if (state.queueOffer && state.queueOffer.seatId === seat.id && state.queueOffer.studentId === state.studentId) {
       return `<p class="panel-text">This seat is being offered to you from the waiting list. Confirm within 5 minutes.</p><button class="btn" style="background:var(--yours-border)" data-action="acceptOffer">Accept seat offer</button>`;
@@ -1171,7 +1180,7 @@ function panelBodyHTML(seat) {
   }
   if (seat.status === "yours" && mine && r.status === "active") {
     const rem = Math.max(0, Math.ceil((r.expiresAt-state.now)/1000));
-    return `<p class="panel-text">You're checked in. Your seat is yours until the 3-hour timer ends.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value" id="panel-session-timer">${formatReal(rem)}</span><span class="panel-label">remaining</span></div><p class="panel-label">At expiry, scan the physical seat QR again to request renewal. Renewal is allowed only if nobody is waiting.</p><div class="btn-row"><button class="btn-secondary" data-action="exitDay">Release seat</button></div>`;
+    return `<p class="panel-text">You're checked in. Your seat is yours until the 3-hour timer ends.</p><div class="timer-row"><span class="timer-dot">⏱</span><span class="timer-value" id="panel-session-timer">${formatReal(rem)}</span><span class="panel-label">remaining</span></div><p class="panel-label">At expiry, scan the entrance QR again to request renewal. Renewal is allowed only if the seat is still available.</p><div class="btn-row"><button class="btn-secondary" data-action="exitDay">Release seat</button></div>`;
   }
   if (seat.status === "yours") return `<p class="panel-text">This seat is currently in use.</p>`;
   return "";
@@ -1197,7 +1206,7 @@ function panelHTML() {
 function ticketHTML() {
   const r = activeReservation();
   const queueEntries = state.waitingList.filter(q => q.studentId === state.studentId).sort((a,b)=>a.createdAt-b.createdAt);
-  let ticket = `<div class="empty-ticket">No active booking yet. Select a free seat on the map to reserve it for 3 hours. Your booking ticket will show your seat and check-in deadline. Scan the physical QR at the desk when you arrive.</div>`;
+  let ticket = `<div class="empty-ticket">No active booking yet. Select a free seat on the map to reserve it for 3 hours. When you enter the library, scan the single entrance QR to confirm arrival.</div>`;
   if (r) {
     const seat = seatById(r.seatId);
     const expires = r.status === "active" && r.expiresAt ? new Date(r.expiresAt).toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}) : "Awaiting QR check-in";
@@ -1225,7 +1234,7 @@ function showScannerError(message) {
 }
 function scannerModalHTML() {
   if (!state.scannerOpen) return "";
-  return `<div class="scanner-backdrop" role="presentation"><section class="scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div class="scanner-head"><h2 class="scanner-title" id="scanner-title">Scan seat QR</h2><button class="panel-close" data-action="closeScanner" aria-label="Close scanner">✕</button></div><p class="scanner-copy">Allow camera access when prompted, then point your camera at the QR label physically attached to your reserved seat.</p><div id="qr-reader"></div>${state.scannerError ? `<p class="scanner-error" role="alert">${escapeHTML(state.scannerError)}</p>` : ""}<div class="scanner-actions"><button class="btn-secondary" data-action="closeScanner">Cancel</button>${state.scannerFailed ? `<button class="btn" data-action="retryScanner">Try camera again</button>` : ""}</div></section></div>`;
+  return `<div class="scanner-backdrop" role="presentation"><section class="scanner-modal" role="dialog" aria-modal="true" aria-labelledby="scanner-title"><div class="scanner-head"><h2 class="scanner-title" id="scanner-title">Scan library entrance QR</h2><button class="panel-close" data-action="closeScanner" aria-label="Close scanner">✕</button></div><p class="scanner-copy">Allow camera access, then scan the single QR code displayed at the library entrance. This confirms your own active reservation.</p><div id="qr-reader"></div>${state.scannerError ? `<p class="scanner-error" role="alert">${escapeHTML(state.scannerError)}</p>` : ""}<div class="scanner-actions"><button class="btn-secondary" data-action="closeScanner">Cancel</button>${state.scannerFailed ? `<button class="btn" data-action="retryScanner">Try camera again</button>` : ""}</div></section></div>`;
 }
 function scannerModalMount() {
   if (!state.scannerOpen || seatQrScanner || state.scannerFailed || !document.getElementById("qr-reader")) return;
@@ -1238,25 +1247,25 @@ function scannerModalMount() {
   seatQrScanner = new Html5Qrcode("qr-reader");
   seatQrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1 }, async decodedText => {
     if (!state.scannerOpen) return;
-    const expectedSeat = state.selectedId;
-    let scannedSeat = decodedText.trim();
+    let scannedValue = decodedText.trim();
     try {
       const parsed = new URL(decodedText, window.location.href);
-      scannedSeat = parsed.searchParams.get("checkin") || scannedSeat;
+      scannedValue = parsed.searchParams.get("checkin") || scannedValue;
     } catch {}
-    if (!seatById(scannedSeat)) {
-      showScannerError("That QR code is not a recognized library seat label. Try scanning the QR attached to your seat.");
+    if (scannedValue !== "entrance") {
+      showScannerError("Please scan the single QR code displayed at the library entrance.");
       return;
     }
-    if (expectedSeat && scannedSeat !== expectedSeat) {
-      showScannerError(`You selected ${seatById(expectedSeat)?.label || expectedSeat}, but scanned ${seatById(scannedSeat)?.label || scannedSeat}. Scan the QR for your selected seat.`);
+    const booking = activeReservation();
+    if (!booking || booking.status !== "reserved") {
+      showScannerError("You need an active seat reservation before checking in. Reserve a free seat first.");
       return;
     }
     await stopSeatScanner();
     state.scannerOpen = false;
     state.scannerError = "";
     state.scannerFailed = false;
-    checkIn(scannedSeat, true);
+    checkIn(booking.seatId, true);
   }, () => {}).catch(err => {
     seatQrScanner = null;
     state.scannerError = "Camera access is required to scan. Allow camera permission in your browser and make sure the site is opened over HTTPS. " + (err?.message || "");

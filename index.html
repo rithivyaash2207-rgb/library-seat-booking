@@ -373,156 +373,20 @@
   .ticket-actions { display:flex; gap:8px; margin-top:12px; }
   .small-btn { border:1px solid var(--border); border-radius:7px; padding:8px 10px; background:var(--surface); color:var(--text-primary); cursor:pointer; font-size:12px; }
   .small-btn.primary { background:var(--accent); color:white; border-color:var(--accent); }
-
-.queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.queue-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 13px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--surface);
-  transition: border-color 0.2s, transform 0.2s;
-}
-
-.queue-item:hover {
-  border-color: var(--accent);
-  transform: translateY(-2px);
-}
-
-.queue-number {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  flex-shrink: 0;
-  border-radius: 12px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 800;
-}
-
-.queue-main {
-  flex: 1;
-  min-width: 0;
-}
-
-.queue-name {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.queue-sub {
-  font-size: 11px;
-  color: var(--text-secondary);
-  margin-top: 4px;
-  line-height: 1.5;
-}
-
-.queue-preview {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 14px 0;
-  padding: 16px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface-alt);
-}
-
-.queue-preview-icon {
-  display: grid;
-  place-items: center;
-  width: 46px;
-  height: 46px;
-  flex-shrink: 0;
-  border-radius: 14px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 22px;
-}
-
-.queue-preview-copy {
-  flex: 1;
-  min-width: 0;
-}
-
-.queue-preview-kicker {
-  margin-bottom: 5px;
-  color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-
-.queue-preview-title {
-  color: var(--text-primary);
-  font-size: 15px;
-  font-weight: 800;
-  line-height: 1.4;
-}
-
-.queue-preview-sub {
-  margin-top: 4px;
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.queue-preview-position {
-  flex-shrink: 0;
-  padding: 8px 11px;
-  border-radius: 10px;
-  background: var(--accent);
-  color: white;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.queue-join-button {
-  width: 100%;
-  min-height: 46px;
-  padding: 12px 16px;
-  border: none;
-  border-radius: 12px;
-  background: var(--accent);
-  color: white;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  transition: filter 0.2s, transform 0.2s;
-}
-
-.queue-join-button:hover {
-  filter: brightness(1.08);
-  transform: translateY(-1px);
-}
-
-.queue-leave-button {
-  width: 100%;
-  min-height: 42px;
-  margin-top: 8px;
-  padding: 11px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: var(--surface);
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-  .queue-item { display:flex; align-items:center; gap:9px; border:1px solid var(--border); border-radius:8px; padding:9px; }
-  .queue-number { display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; border-radius:7px; background:var(--accent-soft); color:var(--accent); font-weight:700; font-size:12px; }
+  .queue-list { display:flex; flex-direction:column; gap:9px; margin-top:14px; }
+  .queue-item { display:flex; align-items:center; gap:11px; border:1px solid var(--border); border-radius:13px; padding:12px; background:var(--surface); transition:border-color .18s ease, transform .18s ease; }
+  .queue-item:hover { border-color:var(--accent); transform:translateY(-1px); }
+  .queue-number { display:grid; place-items:center; width:38px; height:38px; flex-shrink:0; border-radius:11px; background:var(--accent-soft); color:var(--accent); font-weight:800; font-size:13px; }
+  .queue-preview { display:flex; align-items:center; gap:13px; margin:12px 0 14px; padding:14px; border:1px solid var(--border); border-radius:15px; background:linear-gradient(135deg,var(--surface),var(--surface-alt)); }
+  .queue-preview-icon { display:grid; place-items:center; width:44px; height:44px; flex-shrink:0; border-radius:13px; background:var(--accent-soft); color:var(--accent); font-size:21px; }
+  .queue-preview-copy { flex:1; min-width:0; }
+  .queue-preview-kicker { color:var(--text-secondary); font-size:10px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; margin-bottom:4px; }
+  .queue-preview-title { color:var(--text-primary); font-size:14px; font-weight:800; line-height:1.35; }
+  .queue-preview-sub { color:var(--text-secondary); font-size:11px; line-height:1.5; margin-top:4px; }
+  .queue-preview-position { flex-shrink:0; padding:7px 10px; border-radius:10px; background:var(--accent); color:white; font-size:12px; font-weight:800; }
+  .queue-join-button { width:100%; min-height:44px; border:0; border-radius:11px; padding:12px 15px; color:white; font-size:13px; font-weight:800; cursor:pointer; box-shadow:0 5px 14px rgba(0,0,0,.10); transition:transform .18s ease, filter .18s ease; }
+  .queue-join-button:hover { filter:brightness(1.05); transform:translateY(-1px); }
+  .queue-leave-button { width:100%; margin-top:8px; min-height:40px; border:1px solid var(--border); border-radius:11px; padding:10px 14px; background:var(--surface); color:var(--text-secondary); font-weight:700; cursor:pointer; }
   .queue-main { flex:1; min-width:0; }
   .queue-name { font-size:12px; font-weight:600; }
   .queue-sub { font-size:11px; color:var(--text-secondary); margin-top:2px; }
@@ -1311,9 +1175,9 @@ function panelBodyHTML(seat) {
     const freeInZone = state.seats.filter(x => x.floorId === seat.floorId && x.zoneId === seat.zoneId && x.status === "free").length;
     const ahead = queue.length;
     const queueInfo = myQueuePosition >= 0
-      ? `<p class="notice">You're already in this zone's queue at position ${myQueuePosition + 1}. ${myQueuePosition} ${myQueuePosition === 1 ? "person is" : "people are"} ahead of you.</p>`
-      : `<p class="notice">Before you join: ${ahead} ${ahead === 1 ? "person is" : "people are"} currently ahead in this zone's waiting list. If you join now, your position will be #${ahead + 1}.</p>`;
-    return `<p class="panel-text">Occupied by another student right now.</p>${freeInZone ? `<p class="notice">${freeInZone} seat(s) are still available in this zone. Choose one of the free seats on the map.</p>` : `${queueInfo}${myQueuePosition < 0 ? `<button class="btn" data-action="joinQueue" style="background:var(--accent)">Join waiting list · #${ahead + 1}</button>` : `<button class="btn-secondary" data-action="leaveQueue">Leave waiting list</button>`}`}`;
+      ? `<div class="queue-preview"><div class="queue-preview-icon">⌛</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Your queue status</div><div class="queue-preview-title">You're #${myQueuePosition + 1} in line</div><div class="queue-preview-sub">${myQueuePosition === 0 ? "You're next when a seat opens up." : `${myQueuePosition} ${myQueuePosition === 1 ? "person" : "people"} ahead of you in this zone.`}</div></div><div class="queue-preview-position">#${myQueuePosition + 1}</div></div>`
+      : `<div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Before you join</div><div class="queue-preview-title">${ahead === 0 ? "You'll be first in line" : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`}</div><div class="queue-preview-sub">Your position after joining: #${ahead + 1}. Queue is for this zone.</div></div><div class="queue-preview-position">#${ahead + 1}</div></div>`;
+    return `<p class="panel-text">This seat is occupied right now.</p>${freeInZone ? `<p class="notice">${freeInZone} seat(s) are available in this zone. Pick a free seat instead.</p>` : `${queueInfo}${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue" style="background:var(--accent)">Join waiting list <span aria-hidden="true">→</span></button>` : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`}`;
   }
   if (seat.status === "free") {
     const expiredMine = state.lastExpiredReservation && state.lastExpiredReservation.seatId === seat.id && state.lastExpiredReservation.studentId === state.studentId;
@@ -1329,9 +1193,9 @@ function panelBodyHTML(seat) {
     }
     const ahead = queue.length;
     const queueInfo = myQueuePosition >= 0
-      ? `<p class="notice">You're already in this zone's queue at position ${myQueuePosition + 1}. ${myQueuePosition} ${myQueuePosition === 1 ? "person is" : "people are"} ahead of you.</p>`
-      : `<p class="notice">Before you join: ${ahead} ${ahead === 1 ? "person is" : "people are"} currently ahead in this zone's waiting list. If you join now, your position will be #${ahead + 1}.</p>`;
-    return `<p class="panel-text">Reserved or temporarily held by another student.</p>${queueInfo}${myQueuePosition < 0 ? `<button class="btn" style="background:var(--accent)" data-action="joinQueue">Join waiting list · #${ahead + 1}</button>` : `<button class="btn-secondary" data-action="leaveQueue">Leave waiting list</button>`}`;
+      ? `<div class="queue-preview"><div class="queue-preview-icon">⌛</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Your queue status</div><div class="queue-preview-title">You're #${myQueuePosition + 1} in line</div><div class="queue-preview-sub">${myQueuePosition === 0 ? "You're next when a seat opens up." : `${myQueuePosition} ${myQueuePosition === 1 ? "person" : "people"} ahead of you in this zone.`}</div></div><div class="queue-preview-position">#${myQueuePosition + 1}</div></div>`
+      : `<div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-kicker">Before you join</div><div class="queue-preview-title">${ahead === 0 ? "You'll be first in line" : `${ahead} ${ahead === 1 ? "person" : "people"} ahead of you`}</div><div class="queue-preview-sub">Your position after joining: #${ahead + 1}. Queue is for this zone.</div></div><div class="queue-preview-position">#${ahead + 1}</div></div>`;
+    return `<p class="panel-text">Reserved or temporarily held by another student.</p>${queueInfo}${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue" style="background:var(--accent)">Join waiting list <span aria-hidden="true">→</span></button>` : `<button class="queue-leave-button" data-action="leaveQueue">Leave waiting list</button>`}`;
   }
   if (seat.status === "yours" && mine && r.status === "active") {
     const rem = Math.max(0, Math.ceil((r.expiresAt-state.now)/1000));

@@ -549,13 +549,15 @@ async function loadSharedBookings() {
     return;
   }
   state.seats.forEach(seat => {
-    if (seat.status !== "yours" && seat.status !== "incoming") seat.status = "free";
-  });
-  for (const row of (data || [])) {
-    const seat = seatById(row.seat_id);
-    if (!seat) continue;
-    if (row.booking_status === "checked_in") seat.status = "occupied";
-    else seat.status = "incoming";
+  if (seat.status !== "yours") seat.status = "free";
+});
+
+for (const row of (data || [])) {
+  const seat = seatById(row.seat_id);
+  if (!seat) continue;
+  if (row.booking_status === "reserved") seat.status = "incoming";
+  else if (row.booking_status === "checked_in") seat.status = "occupied";
+}
   }
   const { data: mine, error: mineError } = await supabaseClient
     .from("bookings")

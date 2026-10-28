@@ -471,6 +471,23 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
   .seat-assigned-banner .seat-banner-scan{display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;font-size:13px;font-weight:700}
   @keyframes seatBannerIn{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
 
+
+
+  @media (max-width: 768px) {
+    .seat { width: 27px; height: 27px; }
+    .seat-plug-dot { width: 5px; height: 5px; top: 3px; right: 3px; }
+    .cabin .seat { width: 25px; height: 25px; }
+    .round4 .seat-top, .round4 .seat-bottom { margin-left: 0; }
+  }
+
+  @media (max-width: 480px) {
+    .seat { width: 24px; height: 24px; }
+    .cabin .seat { width: 22px; height: 22px; }
+    .seat-plug-dot { width: 4px; height: 4px; top: 2px; right: 2px; }
+    .row-seats { gap: 5px; }
+    .pods { gap: 10px; }
+    .pod { gap: 6px; padding: 8px; }
+  }
 </style>
 </head>
 <body>

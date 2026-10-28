@@ -488,6 +488,45 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
     .pods { gap: 10px; }
     .pod { gap: 6px; padding: 8px; }
   }
+
+
+  /* Keep the ground-floor map at a readable layout width on phones.
+     The map scrolls horizontally instead of squeezing tables together. */
+  @media (max-width: 768px) {
+    .zone:has(.floor-map) {
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      padding: 14px;
+    }
+    .floor-map {
+      width: 900px;
+      min-width: 900px;
+      grid-template-columns: minmax(130px, 1.15fr) repeat(3, minmax(140px, 1fr)) 16px 70px;
+      grid-template-rows: 120px 190px 190px 150px 60px;
+      gap: 16px;
+      padding: 20px;
+      overflow: visible;
+    }
+    .map-cabins-top { grid-column: 1 / 7; grid-row: 1; }
+    .map-top-four { grid-column: 1; grid-row: 2; }
+    .map-six-a { grid-column: 2; grid-row: 2; }
+    .map-six-b { grid-column: 3; grid-row: 2; }
+    .map-right-four-a { grid-column: 4; grid-row: 2; }
+    .map-right-four-b { grid-column: 4; grid-row: 3; }
+    .map-right-four-c { grid-column: 4; grid-row: 4; }
+    .map-round-a { grid-column: 1; grid-row: 3; }
+    .map-round-b { grid-column: 2; grid-row: 3; }
+    .map-round-c { grid-column: 3; grid-row: 3; }
+    .map-round-d { grid-column: 1; grid-row: 4; }
+    .map-round-e { grid-column: 2; grid-row: 4; }
+    .map-round-f { grid-column: 3; grid-row: 4; }
+    .map-divider { grid-column: 5; grid-row: 2 / 5; display: flex; }
+    .map-side-cabins { grid-column: 6; grid-row: 2 / 5; display: flex; }
+    .map-entrance { grid-column: 1 / 5; grid-row: 5; }
+    .cabin-line { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+  }
+
 </style>
 </head>
 <body>

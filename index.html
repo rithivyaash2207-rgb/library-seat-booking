@@ -24,7 +24,7 @@
     
     /* Monochrome Seat States */
     --free: #FFFFFF;         --free-border: #D1D5DB;
-    --occupied: #111827;     --occupied-border: #000000;
+    --occupied: #F3F4F6;     --occupied-border: #E5E7EB;
     --incoming: #FEE2E2;     --incoming-border: #DC2626;
     --yours: #DCFCE7;        --yours-border: #16A34A;
   }
@@ -156,7 +156,6 @@
   .seat:hover { border-color: var(--text-primary) !important; }
   .seat.selected { border: 2px solid var(--accent) !important; z-index: 10; }
   .seat-plug-dot { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; background: var(--border-strong); }
-  .seat[style*="background:var(--occupied)"] { color: #FFFFFF; }
   
   /* Keep seat markers readable against status colors */
   .seat[style*="background:var(--yours)"] .seat-plug-dot { background: #166534; }
@@ -462,10 +461,27 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
   }
 }
 
+
+  .seat-assigned-banner{position:fixed;left:50%;top:18px;transform:translateX(-50%);z-index:100000;width:min(520px,calc(100vw - 28px));background:#fff;border:1px solid #16a34a;border-left:6px solid #16a34a;box-shadow:0 16px 42px rgba(0,0,0,.18);padding:18px 20px;display:none}
+  .seat-assigned-banner.show{display:block;animation:seatBannerIn .2s ease-out}
+  .seat-assigned-banner h3{margin:0 0 6px;font-size:18px;color:#166534}
+  .seat-assigned-banner p{margin:0 0 12px;color:#374151;font-size:14px;line-height:1.5}
+  .seat-assigned-countdown{font-size:28px;font-weight:800;letter-spacing:.04em;font-variant-numeric:tabular-nums;color:#111827;margin:6px 0 12px}
+  .seat-assigned-banner .seat-banner-close{float:right;border:0;background:transparent;font-size:22px;cursor:pointer;color:#6b7280}
+  .seat-assigned-banner .seat-banner-scan{display:inline-block;background:#111827;color:#fff;text-decoration:none;padding:10px 14px;font-size:13px;font-weight:700}
+  @keyframes seatBannerIn{from{opacity:0;transform:translate(-50%,-8px)}to{opacity:1;transform:translate(-50%,0)}}
+
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="seatAssignedBanner" class="seat-assigned-banner" role="status" aria-live="assertive">
+  <button class="seat-banner-close" type="button" aria-label="Dismiss notification" onclick="dismissSeatAssignedBanner()">×</button>
+  <h3>You've got the seat!</h3>
+  <p id="seatAssignedMessage">A seat has been assigned to you automatically. Scan the entrance QR code within 15 minutes to confirm your arrival.</p>
+  <div class="seat-assigned-countdown" id="seatAssignedCountdown">15:00</div>
+  <a class="seat-assigned-scan" href="?checkin=entrance" id="seatAssignedScan">Check in with entrance QR</a>
+</div>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
@@ -532,6 +548,7 @@ async function loadSharedBookings() {
         checkInDeadline: b.check_in_deadline ? new Date(b.check_in_deadline).getTime() : null,
         expiresAt: b.session_expires_at ? new Date(b.session_expires_at).getTime() : null
       };
+      if (b.status === "reserved" && b.check_in_deadline) showSeatAssignedBanner(b);
     }
   } else {
     state.reservation = null;
@@ -539,8 +556,74 @@ async function loadSharedBookings() {
   persistState();
 }
 
+
+let assignedSeatCountdownInterval = null;
+let lastShownAssignedBookingId = null;
+function dismissSeatAssignedBanner() {
+  const el = document.getElementById("seatAssignedBanner");
+  if (el) el.classList.remove("show");
+}
+function showSeatAssignedBanner(booking) {
+  if (!booking || !booking.id || !booking.check_in_deadline) return;
+  if (lastShownAssignedBookingId === String(booking.id)) return;
+  lastShownAssignedBookingId = String(booking.id);
+  const banner = document.getElementById("seatAssignedBanner");
+  const message = document.getElementById("seatAssignedMessage");
+  const scan = document.getElementById("seatAssignedScan");
+  if (!banner || !message) return;
+  const seat = seatById(booking.seat_id);
+  message.textContent = `Seat ${seat ? seat.label : booking.seat_id} has been assigned to you automatically. Scan the entrance QR code within 15 minutes to confirm your arrival.`;
+  if (scan) scan.href = "?checkin=entrance";
+  banner.classList.add("show");
+  if (assignedSeatCountdownInterval) window.clearInterval(assignedSeatCountdownInterval);
+  const tick = () => {
+    const deadline = new Date(booking.check_in_deadline).getTime();
+    const remaining = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+    const counter = document.getElementById("seatAssignedCountdown");
+    if (counter) counter.textContent = `${String(Math.floor(remaining/60)).padStart(2,"0")}:${String(remaining%60).padStart(2,"0")}`;
+    if (remaining <= 0) {
+      if (counter) counter.textContent = "00:00";
+      window.clearInterval(assignedSeatCountdownInterval);
+      showAppNotification("Your 15-minute check-in window has ended. The seat will be offered to the next student.", "error");
+    }
+  };
+  tick();
+  assignedSeatCountdownInterval = window.setInterval(tick, 1000);
+}
+
+let lastNotificationCheck = new Date().toISOString();
+async function pollSeatNotifications() {
+  if (!authUser) return;
+  const { data, error } = await supabaseClient
+    .from("seat_notifications")
+    .select("id,title,message,created_at")
+    .eq("user_id", authUser.id)
+    .is("read_at", null)
+    .gt("created_at", lastNotificationCheck)
+    .order("created_at", { ascending: true })
+    .limit(20);
+  if (error) return;
+  if (data && data.length) {
+    for (const n of data) {
+      setNotice((n.title ? n.title + ": " : "") + n.message, "success");
+      if ((n.title || "").toLowerCase().includes("seat assigned")) {
+        const { data: assigned } = await supabaseClient.from("bookings")
+          .select("id,seat_id,status,reserved_at,check_in_deadline,session_expires_at")
+          .eq("user_id", authUser.id).eq("status", "reserved")
+          .order("reserved_at", { ascending: false }).limit(1);
+        if (assigned && assigned[0]) showSeatAssignedBanner(assigned[0]);
+      }
+    }
+    const latest = data[data.length - 1].created_at;
+    if (latest) lastNotificationCheck = latest;
+    const ids = data.map(n => n.id);
+    await supabaseClient.from("seat_notifications").update({ read_at: new Date().toISOString() }).in("id", ids);
+  }
+}
+
 async function refreshAndRender() {
   await loadSharedBookings();
+  if (state.selectedId) await loadQueueStats(seatById(state.selectedId));
   render();
 }
 
@@ -678,6 +761,7 @@ const state = {
   lastExpiredReservation: saved?.lastExpiredReservation || null,
   queueOffer: saved?.queueOffer || null,
   queuePanelOpen: false,
+  queueStats: {},
   scannerOpen: false,
   scannerError: "",
   scannerFailed: false
@@ -733,6 +817,22 @@ function openSeat(id) {
   state.selectedId = id;
   state.lockError = hasSeatAlready() && activeReservation().seatId !== id ? "You have an active booking. Release it first." : "";
   render();
+  loadQueueStats(seatById(id)).then(render);
+}
+
+function queueStatsKey(seat) { return seat ? `${seat.floorId}|${seat.zoneId}` : ""; }
+async function loadQueueStats(seat) {
+  if (!authUser || !seat) return;
+  const { data, error } = await supabaseClient.rpc("get_seat_waitlist_status", {
+    p_floor_id: String(seat.floorId),
+    p_zone_id: String(seat.zoneId)
+  });
+  if (error) {
+    state.queueStats[queueStatsKey(seat)] = { error: error.message, waiting_count: null, my_position: null };
+    return;
+  }
+  const result = Array.isArray(data) ? data[0] : data;
+  state.queueStats[queueStatsKey(seat)] = result || { waiting_count: 0, my_position: null, is_waiting: false };
 }
 function closePanel() { state.selectedId = null; state.lockError = ""; render(); }
 function switchFloor(id) { state.activeFloor = id; closePanel(); }
@@ -774,6 +874,9 @@ async function cancelHold(id) {
   if (error) { setNotice(error.message, "error"); render(); return; }
   state.reservation = null;
   setNotice("Reservation cancelled.", "success");
+  await supabaseClient.rpc("process_seat_waitlist", {
+    p_seat_id: String(id), p_floor_id: String(seatById(id)?.floorId || ""), p_zone_id: String(seatById(id)?.zoneId || "")
+  });
   await refreshAndRender();
 }
 
@@ -784,30 +887,54 @@ async function exitForDay(id) {
   if (error) { setNotice(error.message, "error"); render(); return; }
   state.reservation = null;
   state.selectedId = null;
-  setNotice("Seat released.", "success");
+  setNotice("Seat released. Assigning it to the next student in the shared queue if anyone is waiting.", "success");
+  await supabaseClient.rpc("process_seat_waitlist", {
+    p_seat_id: String(id), p_floor_id: String(seatById(id)?.floorId || ""), p_zone_id: String(seatById(id)?.zoneId || "")
+  });
   await refreshAndRender();
 }
 
-function joinWaitingList(id) {
-  const s = seatById(id); if (!s) return;
-  if (hasSeatAlready()) { setNotice("Release booking first.", "error"); render(); return; }
-  if (s.status === "free") { setNotice("Seat available (Reserve it).", "error"); render(); return; }
-  const existing = state.waitingList.find(q => q.studentId === state.studentId && q.floorId === s.floorId && q.zoneId === s.zoneId);
-  if (existing) { setNotice(`Already on list.`, "success"); render(); return; }
-  state.waitingList.push({ studentId: state.studentId, floorId: s.floorId, zoneId: s.zoneId, createdAt: Date.now(), requestedSeatId: id });
-  setNotice("Joined waiting list.", "success"); persistState(); render();
+async function joinWaitingList(id) {
+  const s = seatById(id);
+  if (!s || !authUser) return;
+  if (hasSeatAlready()) { setNotice("Release your current booking first.", "error"); render(); return; }
+  if (s.status === "free") { setNotice("This seat is available. Reserve it directly.", "error"); render(); return; }
+  const { error } = await supabaseClient.rpc("join_seat_waitlist", {
+    p_seat_id: String(s.id),
+    p_floor_id: String(s.floorId),
+    p_zone_id: String(s.zoneId)
+  });
+  if (error) {
+    setNotice("Could not join the shared waiting list: " + error.message, "error");
+    render();
+    return;
+  }
+  setNotice("Joined the shared waiting list.", "success");
+  await refreshAndRender();
+  const q = state.queueStats[queueStatsKey(s)];
+  if (q && q.my_position) setNotice(`You are #${q.my_position} in the waiting list. ${q.waiting_count} student(s) are waiting in this zone.`, "success");
+  render();
 }
-function leaveWaitingList() {
-  state.waitingList = state.waitingList.filter(q => q.studentId !== state.studentId);
-  setNotice("Left waiting list.", "success"); persistState(); render();
+async function leaveWaitingList() {
+  if (!authUser) return;
+  const { error } = await supabaseClient.rpc("leave_seat_waitlist");
+  if (error) {
+    setNotice("Could not leave the waiting list: " + error.message, "error");
+    render();
+    return;
+  }
+  setNotice("You left the waiting list.", "success");
+  await refreshAndRender();
 }
-function promoteNextWaiter(freedSeat) {
-  const queue = zoneQueue(freedSeat); if (!queue.length) return;
-  const next = queue[0];
-  state.waitingList = state.waitingList.filter(q => q !== next);
-  freedSeat.status = "incoming";
-  freedSeat.timer = { startedAt: Date.now(), demoDurationMs: 5*60*1000, realDurationSec: 5*60, purpose: "offer" };
-  state.queueOffer = { studentId: next.studentId, seatId: freedSeat.id, expiresAt: Date.now()+5*60*1000 };
+async function promoteNextWaiter(freedSeat) {
+  if (!freedSeat || !authUser) return;
+  const { error } = await supabaseClient.rpc("process_seat_waitlist", {
+    p_seat_id: String(freedSeat.id),
+    p_floor_id: String(freedSeat.floorId),
+    p_zone_id: String(freedSeat.zoneId)
+  });
+  if (error) setNotice("Seat released, but automatic queue assignment needs attention: " + error.message, "error");
+  await refreshAndRender();
 }
 
 async function updateStudentId(value) {
@@ -916,10 +1043,13 @@ function railHTML() {
 
 function panelBodyHTML(seat) {
   const r = activeReservation(); const mine = r && r.seatId === seat.id;
-  const queue = zoneQueue(seat); const myQueuePosition = queue.findIndex(q => q.studentId === state.studentId);
+  const queueInfo = state.queueStats[queueStatsKey(seat)] || {};
+  const waitingCount = queueInfo.waiting_count === null || queueInfo.waiting_count === undefined ? null : Number(queueInfo.waiting_count);
+  const myQueuePosition = Number(queueInfo.my_position) || -1;
+  const queueCountText = waitingCount === null ? "Loading waiting list…" : `${waitingCount} STUDENT${waitingCount === 1 ? "" : "S"} WAITING`;
+  const positionText = myQueuePosition > 0 ? `YOUR POSITION: #${myQueuePosition}` : "";
   if (seat.status === "occupied") {
-    const ahead = queue.length;
-    return `<p class="panel-text">Seat in use.</p><div class="queue-preview"><div class="queue-preview-icon">!</div><div class="queue-preview-copy"><div class="queue-preview-title">${ahead} WAITING</div></div></div>${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue">JOIN LIST</button>` : `<button class="queue-leave-button" data-action="leaveQueue">LEAVE LIST</button>`}`;
+    return `<p class="panel-text">Seat in use.</p><div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-title">${queueCountText}</div>${positionText ? `<div class="queue-preview-title" style="margin-top:8px">${positionText}</div>` : ""}</div></div>${myQueuePosition < 1 ? `<button class="queue-join-button" data-action="joinQueue">JOIN LIST</button>` : `<button class="queue-leave-button" data-action="leaveQueue">LEAVE LIST</button>`}`;
   }
   if (seat.status === "free") {
     const expiredMine = state.lastExpiredReservation && state.lastExpiredReservation.seatId === seat.id && state.lastExpiredReservation.studentId === state.studentId;
@@ -934,8 +1064,7 @@ function panelBodyHTML(seat) {
     if (state.queueOffer && state.queueOffer.seatId === seat.id && state.queueOffer.studentId === state.studentId) {
       return `<p class="panel-text">Offered to you.</p><button class="btn" data-action="acceptOffer">ACCEPT</button>`;
     }
-    const ahead = queue.length;
-    return `<p class="panel-text">Reserved.</p><div class="queue-preview"><div class="queue-preview-icon">!</div><div class="queue-preview-copy"><div class="queue-preview-title">${ahead} WAITING</div></div></div>${myQueuePosition < 0 ? `<button class="queue-join-button" data-action="joinQueue">JOIN LIST</button>` : `<button class="queue-leave-button" data-action="leaveQueue">LEAVE LIST</button>`}`;
+    return `<p class="panel-text">Reserved.</p><div class="queue-preview"><div class="queue-preview-icon">☷</div><div class="queue-preview-copy"><div class="queue-preview-title">${queueCountText}</div>${positionText ? `<div class="queue-preview-title" style="margin-top:8px">${positionText}</div>` : ""}</div></div>${myQueuePosition < 1 ? `<button class="queue-join-button" data-action="joinQueue">JOIN LIST</button>` : `<button class="queue-leave-button" data-action="leaveQueue">LEAVE LIST</button>`}`;
   }
   if (seat.status === "yours" && mine && r.status === "active") {
     const rem = Math.max(0, Math.ceil((r.expiresAt-state.now)/1000));
@@ -1172,7 +1301,7 @@ function updateVisibleTimerText() {
 }
 
 setInterval(() => { state.now = Date.now(); if (resolveTimers()) render(); else updateVisibleTimerText(); }, 1000);
-setInterval(() => { if (authUser && !document.hidden) loadSharedBookings().then(render); }, 15000);
+setInterval(async () => { if (authUser && !document.hidden) { await loadSharedBookings(); if (state.selectedId) await loadQueueStats(seatById(state.selectedId)); render(); } }, 15000);
 
 supabaseClient.auth.getSession().then(async ({ data, error }) => {
   if (error) { showAuthMessage(error.message); return; }

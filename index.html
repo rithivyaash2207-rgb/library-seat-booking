@@ -480,7 +480,7 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
   <h3>You've got the seat!</h3>
   <p id="seatAssignedMessage">A seat has been assigned to you automatically. Scan the entrance QR code within 15 minutes to confirm your arrival.</p>
   <div class="seat-assigned-countdown" id="seatAssignedCountdown">15:00</div>
-  <a class="seat-banner-scan" href="?checkin=entrance" id="seatAssignedScan">Check in with entrance QR</a>
+  <a class="seat-assigned-scan" href="?checkin=entrance" id="seatAssignedScan">Check in with entrance QR</a>
 </div>
 <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -559,80 +559,6 @@ async function loadSharedBookings() {
 
 let assignedSeatCountdownInterval = null;
 let lastShownAssignedBookingId = null;
-// Bookings the student made by hand must never trigger the "assigned automatically" banner.
-let manualReserveInFlight = false;
-const manualBookingIds = new Set();
-
-// The server function process_seat_waitlist was removing waiting students without giving them the seat.
-// Until it is fixed in Supabase, the student at position #1 claims the freed seat from their own page
-// (see claimSeatFromWaitlist). Set this to true to go back to server-side assignment.
-const USE_SERVER_WAITLIST_ASSIGN = false;
-
-// ---- Waiting-list priority: the first student in line reserves the freed seat themselves ----
-let claimingSeat = false;
-let waitlistSyncedFor = null;
-
-function myWaitEntries() {
-  return state.waitingList.filter(q => q.studentId === state.studentId).sort((a, b) => a.createdAt - b.createdAt);
-}
-function removeLocalWaitEntries(floorId, zoneId) {
-  state.waitingList = state.waitingList.filter(q =>
-    !(q.studentId === state.studentId && (!floorId || (q.floorId === floorId && q.zoneId === zoneId))));
-}
-// Rebuild the local list from the server (new device, cleared storage, etc.). Runs once per sign-in.
-async function syncWaitlistFromServer() {
-  if (!authUser || waitlistSyncedFor === authUser.id) return;
-  waitlistSyncedFor = authUser.id;
-  const zones = [];
-  FLOORS.forEach(f => f.zones.forEach(z => zones.push({ floorId: f.id, zoneId: z.id })));
-  for (const z of zones) {
-    await loadQueueStats(z);
-    const st = state.queueStats[queueStatsKey(z)];
-    if (st && Number(st.my_position) > 0 && !myWaitEntries().some(q => q.floorId === z.floorId && q.zoneId === z.zoneId)) {
-      state.waitingList.push({ studentId: state.studentId, floorId: z.floorId, zoneId: z.zoneId, requestedSeatId: null, createdAt: Date.now() });
-    }
-  }
-}
-async function claimSeatFromWaitlist() {
-  if (!authUser || claimingSeat || activeReservation()) return;
-  claimingSeat = true;
-  try {
-    await syncWaitlistFromServer();
-    for (const entry of myWaitEntries()) {
-      const zoneRef = { floorId: entry.floorId, zoneId: entry.zoneId };
-      await loadQueueStats(zoneRef);
-      const st = state.queueStats[queueStatsKey(zoneRef)];
-      if (!st || st.error) continue;
-      const pos = Number(st.my_position) || 0;
-      if (pos < 1) { removeLocalWaitEntries(entry.floorId, entry.zoneId); continue; }  // no longer on the list
-      if (pos !== 1) continue;                                                           // not next yet
-      const free = state.seats.filter(s => s.floorId === entry.floorId && s.zoneId === entry.zoneId && s.status === "free");
-      if (!free.length) continue;
-      const target = free.find(s => s.id === entry.requestedSeatId) || free[0];
-      const { error } = await supabaseClient.rpc("reserve_seat", { p_seat_id: target.id });
-      if (error) { setNotice("A seat came free for you but could not be reserved: " + error.message, "error"); continue; }
-      try { await supabaseClient.rpc("leave_seat_waitlist"); } catch {}
-      removeLocalWaitEntries();
-      await loadSharedBookings();   // also shows the "You've got the seat!" banner
-      state.activeFloor = target.floorId;
-      setNotice(`You were next in line. Seat ${target.label} is reserved for you. Scan the entrance QR within 15 minutes.`, "success");
-      break;
-    }
-  } finally {
-    claimingSeat = false;
-  }
-}
-
-// Ask the server to hand a just-freed seat to the next student on the zone's waiting list.
-async function assignFreedSeatToWaitlist(seat) {
-  if (!seat || !USE_SERVER_WAITLIST_ASSIGN) return;
-  const { error } = await supabaseClient.rpc("process_seat_waitlist", {
-    p_seat_id: String(seat.id),
-    p_floor_id: String(seat.floorId),
-    p_zone_id: String(seat.zoneId)
-  });
-  if (error) setNotice("Seat released, but it could not be passed to the waiting list: " + error.message, "error");
-}
 function dismissSeatAssignedBanner() {
   const el = document.getElementById("seatAssignedBanner");
   if (el) el.classList.remove("show");
@@ -641,8 +567,6 @@ function showSeatAssignedBanner(booking) {
   if (!booking || !booking.id || !booking.check_in_deadline) return;
   if (lastShownAssignedBookingId === String(booking.id)) return;
   lastShownAssignedBookingId = String(booking.id);
-  if (manualReserveInFlight || manualBookingIds.has(String(booking.id))) return;
-  if (new Date(booking.check_in_deadline).getTime() <= Date.now()) return;
   const banner = document.getElementById("seatAssignedBanner");
   const message = document.getElementById("seatAssignedMessage");
   const scan = document.getElementById("seatAssignedScan");
@@ -660,9 +584,7 @@ function showSeatAssignedBanner(booking) {
     if (remaining <= 0) {
       if (counter) counter.textContent = "00:00";
       window.clearInterval(assignedSeatCountdownInterval);
-      setNotice("Your 15-minute check-in window has ended. The seat will be offered to the next student.", "error");
-      dismissSeatAssignedBanner();
-      render();
+      showAppNotification("Your 15-minute check-in window has ended. The seat will be offered to the next student.", "error");
     }
   };
   tick();
@@ -701,8 +623,6 @@ async function pollSeatNotifications() {
 
 async function refreshAndRender() {
   await loadSharedBookings();
-  await pollSeatNotifications();
-  await claimSeatFromWaitlist();
   if (state.selectedId) await loadQueueStats(seatById(state.selectedId));
   render();
 }
@@ -884,7 +804,7 @@ function resolveTimers() {
   if (r?.status === "reserved" && r.checkInDeadline && state.now >= r.checkInDeadline) {
     const seat = seatById(r.seatId);
     if (seat && seat.status === "incoming") seat.status = "free";
-    clearSeatTimer(seat); if (seat) releaseExpiredAndPromote(seat);
+    clearSeatTimer(seat); if (seat) promoteNextWaiter(seat);
     state.lastExpiredReservation = { ...r, status: "expired", expiredAt: state.now };
     state.reservation = null;
     setNotice("Check-in window expired. Reserve again or join list.", "error"); persistState(); changed = true;
@@ -923,13 +843,10 @@ async function lockFromLibrary(id) {
   if (s.status !== "free") { setNotice("Seat unavailable.", "error"); render(); return; }
   if (hasSeatAlready()) { state.lockError = "You have an active booking. Release it first."; render(); return; }
   
-  manualReserveInFlight = true;
   const { data, error } = await supabaseClient.rpc("reserve_seat", { p_seat_id: id });
-  if (error) { manualReserveInFlight = false; setNotice(error.message, "error"); await refreshAndRender(); return; }
+  if (error) { setNotice(error.message, "error"); await refreshAndRender(); return; }
   
   await loadSharedBookings();
-  if (state.reservation?.bookingId) manualBookingIds.add(String(state.reservation.bookingId));
-  manualReserveInFlight = false;
   state.selectedId = id;
   setNotice("Seat reserved. Scan QR within 15 mins.", "success");
   render();
@@ -957,7 +874,9 @@ async function cancelHold(id) {
   if (error) { setNotice(error.message, "error"); render(); return; }
   state.reservation = null;
   setNotice("Reservation cancelled.", "success");
-  await assignFreedSeatToWaitlist(seatById(id));
+  await supabaseClient.rpc("process_seat_waitlist", {
+    p_seat_id: String(id), p_floor_id: String(seatById(id)?.floorId || ""), p_zone_id: String(seatById(id)?.zoneId || "")
+  });
   await refreshAndRender();
 }
 
@@ -969,7 +888,9 @@ async function exitForDay(id) {
   state.reservation = null;
   state.selectedId = null;
   setNotice("Seat released. Assigning it to the next student in the shared queue if anyone is waiting.", "success");
-  await assignFreedSeatToWaitlist(seatById(id));
+  await supabaseClient.rpc("process_seat_waitlist", {
+    p_seat_id: String(id), p_floor_id: String(seatById(id)?.floorId || ""), p_zone_id: String(seatById(id)?.zoneId || "")
+  });
   await refreshAndRender();
 }
 
@@ -989,9 +910,6 @@ async function joinWaitingList(id) {
     return;
   }
   setNotice("Joined the shared waiting list.", "success");
-  removeLocalWaitEntries();   // one waiting-list spot per student
-  state.waitingList.push({ studentId: state.studentId, floorId: s.floorId, zoneId: s.zoneId, requestedSeatId: s.id, createdAt: Date.now() });
-  persistState();
   await refreshAndRender();
   const q = state.queueStats[queueStatsKey(s)];
   if (q && q.my_position) setNotice(`You are #${q.my_position} in the waiting list. ${q.waiting_count} student(s) are waiting in this zone.`, "success");
@@ -1005,26 +923,11 @@ async function leaveWaitingList() {
     render();
     return;
   }
-  removeLocalWaitEntries();
   setNotice("You left the waiting list.", "success");
-  await refreshAndRender();
-}
-// Check-in window ran out: free the seat on the server (it may already be freed there), then pass it on.
-const expiringSeats = new Set();
-async function releaseExpiredAndPromote(seat) {
-  if (!authUser || !seat || expiringSeats.has(seat.id)) return;
-  expiringSeats.add(seat.id);
-  try {
-    await supabaseClient.rpc("release_seat", { p_seat_id: seat.id });
-    await assignFreedSeatToWaitlist(seat);
-  } finally {
-    setTimeout(() => expiringSeats.delete(seat.id), 30000);
-  }
   await refreshAndRender();
 }
 async function promoteNextWaiter(freedSeat) {
   if (!freedSeat || !authUser) return;
-  if (!USE_SERVER_WAITLIST_ASSIGN) { await refreshAndRender(); return; }
   const { error } = await supabaseClient.rpc("process_seat_waitlist", {
     p_seat_id: String(freedSeat.id),
     p_floor_id: String(freedSeat.floorId),
@@ -1196,7 +1099,7 @@ function ticketHTML() {
     ticket = `<div class="ticket-layout"><div class="ticket-details"><div class="ticket-code">${r.bookingId}</div><div class="ticket-meta">SEAT: ${seat?.label || r.seatId} | FLOOR: ${FLOORS.find(f=>f.id===r.floorId)?.name || r.floorId}<br><span class="status-pill ${r.status==='active'?'success':'warning'}">${r.status==='active'?'CHECKED IN':'RESERVED'}</span></div></div></div><div class="ticket-actions"><button class="small-btn primary" data-action="openMySeat">VIEW</button><button class="small-btn" data-action="printTicket">PRINT</button><button class="small-btn" data-action="releaseTicket">CANCEL</button></div>`;
   }
   
-  const queueHTML = queueEntries.length ? `<div class="queue-list">${queueEntries.map(q=>{const seat=seatById(q.requestedSeatId); const zone=FLOORS.find(f=>f.id===q.floorId)?.zones.find(z=>z.id===q.zoneId); const qs=state.queueStats[queueStatsKey({floorId:q.floorId,zoneId:q.zoneId})]; const pos=Number(qs?.my_position)||(zoneQueue({floorId:q.floorId,zoneId:q.zoneId}).findIndex(x=>x.studentId===q.studentId)+1); return `<div class="queue-item"><div class="queue-number">#${pos}</div><div class="queue-main"><div class="queue-name">${zone?.name || q.zoneId}</div><div class="queue-sub">${seat?.label || 'ANY'}</div></div><span class="status-pill ${pos===1?'success':''}">${pos===1?'NEXT':'WAIT'}</span></div>`}).join("")}</div><div class="ticket-actions"><button class="small-btn" data-action="leaveQueue">LEAVE</button></div>` : `<div class="empty-ticket">NO QUEUES</div>`;
+  const queueHTML = queueEntries.length ? `<div class="queue-list">${queueEntries.map(q=>{const seat=seatById(q.requestedSeatId); const zone=FLOORS.find(f=>f.id===q.floorId)?.zones.find(z=>z.id===q.zoneId); const pos=zoneQueue({floorId:q.floorId,zoneId:q.zoneId}).findIndex(x=>x.studentId===q.studentId)+1; return `<div class="queue-item"><div class="queue-number">#${pos}</div><div class="queue-main"><div class="queue-name">${zone?.name || q.zoneId}</div><div class="queue-sub">${seat?.label || 'ANY'}</div></div><span class="status-pill ${pos===1?'success':''}">${pos===1?'NEXT':'WAIT'}</span></div>`}).join("")}</div><div class="ticket-actions"><button class="small-btn" data-action="leaveQueue">LEAVE</button></div>` : `<div class="empty-ticket">NO QUEUES</div>`;
   
   const queueCount = queueEntries.length;
   const queueToggle = `<button class="small-btn" data-action="toggleQueue" aria-expanded="${state.queuePanelOpen ? "true" : "false"}">${state.queuePanelOpen ? "HIDE QUEUE" : `QUEUE (${queueCount})`}</button>`;
@@ -1345,7 +1248,7 @@ document.addEventListener("click", async (e) => {
   const actionEl = e.target.closest("[data-action]"); if (!actionEl) return;
   
   const action = actionEl.dataset.action; const id = state.selectedId;
-  if (action === "signOut") { await supabaseClient.auth.signOut(); authUser = null; state.studentName = ""; state.studentId = ""; state.reservation = null; waitlistSyncedFor = null; authMode = "signin"; authMessage = ""; render(); return; }
+  if (action === "signOut") { await supabaseClient.auth.signOut(); authUser = null; state.studentName = ""; state.studentId = ""; state.reservation = null; authMode = "signin"; authMessage = ""; render(); return; }
   if (action === "close") return closePanel();
   if (action === "lockLibrary") return lockFromLibrary(id);
   if (action === "confirmArrived") return checkIn(id, false);
@@ -1398,14 +1301,14 @@ function updateVisibleTimerText() {
 }
 
 setInterval(() => { state.now = Date.now(); if (resolveTimers()) render(); else updateVisibleTimerText(); }, 1000);
-setInterval(async () => { if (authUser && !document.hidden) { await loadSharedBookings(); await pollSeatNotifications(); await claimSeatFromWaitlist(); if (state.selectedId) await loadQueueStats(seatById(state.selectedId)); } }, 8000);
+setInterval(async () => { if (authUser && !document.hidden) { await loadSharedBookings(); if (state.selectedId) await loadQueueStats(seatById(state.selectedId)); render(); } }, 15000);
 
 supabaseClient.auth.getSession().then(async ({ data, error }) => {
   if (error) { showAuthMessage(error.message); return; }
   authUser = data.session?.user || null;
   if (authUser) {
     state.studentId = authUser.id; state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student";
-    await loadSharedBookings(); await claimSeatFromWaitlist(); render(); handleQrCheckin();
+    await loadSharedBookings(); render(); handleQrCheckin();
   } else { render(); }
 });
 

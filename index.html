@@ -280,7 +280,7 @@
     position: fixed; inset: 0; z-index: 1000;
     background: rgba(0, 0, 0, 0.4); border: none; padding: 0;
     backdrop-filter: blur(2px);
-    animation: backdropIn 150ms ease; cursor: default;
+    animation: none; cursor: default;
   }
   @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
   
@@ -289,7 +289,7 @@
     transform: translateX(-50%);
     width: min(90vw, 420px); background: var(--surface); border: 1px solid var(--border);
     padding: 32px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    animation: sheetUp 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    animation: none;
   }
   @keyframes sheetUp { from { transform: translate(-50%, 20px); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
   
@@ -552,6 +552,7 @@ async function loadSharedBookings() {
     }
   } else {
     state.reservation = null;
+    dismissSeatAssignedBanner();
   }
   persistState();
 }
@@ -592,6 +593,29 @@ function showSeatAssignedBanner(booking) {
 }
 
 let lastNotificationCheck = new Date().toISOString();
+async function loadSharedWaitlist() {
+  if (!authUser) return;
+  const { data, error } = await supabaseClient
+    .from("seat_waitlist")
+    .select("id,seat_id,user_id,floor_id,zone_id,status,created_at,assigned_at")
+    .eq("status", "waiting")
+    .order("created_at", { ascending: true });
+  if (error) {
+    setNotice("Could not refresh the shared waiting list: " + error.message, "error");
+    return;
+  }
+  state.waitingList = (data || []).map(row => ({
+    id: row.id,
+    requestedSeatId: row.seat_id,
+    studentId: row.user_id,
+    floorId: row.floor_id,
+    zoneId: row.zone_id,
+    createdAt: new Date(row.created_at).getTime(),
+    assignedAt: row.assigned_at ? new Date(row.assigned_at).getTime() : null
+  }));
+  persistState();
+}
+
 async function pollSeatNotifications() {
   if (!authUser) return;
   const { data, error } = await supabaseClient
@@ -623,7 +647,9 @@ async function pollSeatNotifications() {
 
 async function refreshAndRender() {
   await loadSharedBookings();
+  await loadSharedWaitlist();
   if (state.selectedId) await loadQueueStats(seatById(state.selectedId));
+  await pollSeatNotifications();
   render();
 }
 
@@ -814,16 +840,20 @@ function resolveTimers() {
 
 function hasSeatAlready() { return !!activeReservation(); }
 function openSeat(id) {
+  if (state.selectedId === id && document.querySelector(".panel")) return;
   state.selectedId = id;
   state.lockError = hasSeatAlready() && activeReservation().seatId !== id ? "You have an active booking. Release it first." : "";
   render();
-  loadQueueStats(seatById(id)).then(render);
+  loadQueueStats(seatById(id)).then(() => {
+    if (state.selectedId === id) render();
+  });
 }
 
 function queueStatsKey(seat) { return seat ? `${seat.floorId}|${seat.zoneId}` : ""; }
 async function loadQueueStats(seat) {
   if (!authUser || !seat) return;
-  const { data, error } = await supabaseClient.rpc("get_seat_waitlist_status", {
+  const { data, error } = await supabaseClient.rpc("get_seat_waitlist_position", {
+    p_seat_id: String(seat.id),
     p_floor_id: String(seat.floorId),
     p_zone_id: String(seat.zoneId)
   });
@@ -832,7 +862,10 @@ async function loadQueueStats(seat) {
     return;
   }
   const result = Array.isArray(data) ? data[0] : data;
-  state.queueStats[queueStatsKey(seat)] = result || { waiting_count: 0, my_position: null, is_waiting: false };
+  state.queueStats[queueStatsKey(seat)] = result ? {
+    ...result,
+    my_position: result.your_position ?? result.my_position ?? null
+  } : { waiting_count: 0, my_position: null, is_waiting: false };
 }
 function closePanel() { state.selectedId = null; state.lockError = ""; render(); }
 function switchFloor(id) { state.activeFloor = id; closePanel(); }
@@ -853,6 +886,7 @@ async function lockFromLibrary(id) {
 }
 
 async function checkIn(id, fromQr=false) {
+  dismissSeatAssignedBanner();
   const s = seatById(id);
   if (!s) { setNotice("Invalid QR code.", "error"); render(); return; }
   if (!authUser) { setNotice("Sign in required.", "error"); render(); return; }
@@ -1119,7 +1153,7 @@ function ticketHTML() {
              <button class="small-btn" data-action="editStudent">EDIT</button>
              <button class="small-btn" data-action="signOut">SIGN OUT</button>`}
       </div>
-      ${state.notice ? `<div class="notice ${state.noticeType}">${state.notice}</div>` : ""}
+      ${state.notice ? `<div class="notice ${escapeHTML(state.noticeType)}">${escapeHTML(state.notice)}</div>` : ""}
       ${ticket}
     </section>
     ${queuePanel}
@@ -1127,6 +1161,7 @@ function ticketHTML() {
 }
 
 let seatQrScanner = null;
+let qrCheckinInProgress = false;
 function showScannerError(message) {
   state.scannerError = message;
   const modal = document.querySelector(".scanner-modal");
@@ -1150,16 +1185,17 @@ function scannerModalMount() {
   
   seatQrScanner = new Html5Qrcode("qr-reader");
   seatQrScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 230, height: 230 }, aspectRatio: 1 }, async decodedText => {
-    if (!state.scannerOpen) return;
+    if (!state.scannerOpen || qrCheckinInProgress) return;
     let scannedValue = decodedText.trim();
     try { const parsed = new URL(decodedText, window.location.href); scannedValue = parsed.searchParams.get("checkin") || scannedValue; } catch {}
     if (scannedValue !== "entrance") { showScannerError("Invalid QR."); return; }
     
     const booking = activeReservation();
     if (!booking || booking.status !== "reserved") { showScannerError("Reserve a seat first."); return; }
+    qrCheckinInProgress = true;
     await stopSeatScanner();
     state.scannerOpen = false; state.scannerError = ""; state.scannerFailed = false;
-    checkIn(booking.seatId, true);
+    try { await checkIn(booking.seatId, true); } finally { qrCheckinInProgress = false; }
   }, () => {}).catch(err => {
     seatQrScanner = null; state.scannerError = "Camera access required. " + (err?.message || ""); state.scannerFailed = true; render();
   });
@@ -1174,6 +1210,7 @@ async function closeSeatScanner() {
   await stopSeatScanner(); render();
 }
 function openSeatScanner() {
+  dismissSeatAssignedBanner();
   state.scannerOpen = true; state.scannerError = ""; state.scannerFailed = false;
   render(); scannerModalMount();
 }
@@ -1301,20 +1338,20 @@ function updateVisibleTimerText() {
 }
 
 setInterval(() => { state.now = Date.now(); if (resolveTimers()) render(); else updateVisibleTimerText(); }, 1000);
-setInterval(async () => { if (authUser && !document.hidden) { await loadSharedBookings(); if (state.selectedId) await loadQueueStats(seatById(state.selectedId)); render(); } }, 15000);
+setInterval(async () => { if (authUser && !document.hidden) { await loadSharedBookings(); await loadSharedWaitlist(); await pollSeatNotifications(); if (state.selectedId) await loadQueueStats(seatById(state.selectedId)); render(); } }, 15000);
 
 supabaseClient.auth.getSession().then(async ({ data, error }) => {
   if (error) { showAuthMessage(error.message); return; }
   authUser = data.session?.user || null;
   if (authUser) {
     state.studentId = authUser.id; state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student";
-    await loadSharedBookings(); render(); handleQrCheckin();
+    await loadSharedBookings(); await loadSharedWaitlist(); render(); handleQrCheckin();
   } else { render(); }
 });
 
 supabaseClient.auth.onAuthStateChange(async (_event, session) => {
   authUser = session?.user || null;
-  if (authUser) { state.studentId = authUser.id; state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student"; await loadSharedBookings(); }
+  if (authUser) { state.studentId = authUser.id; state.studentName = authUser.user_metadata?.full_name || authUser.email?.split("@")[0] || "Student"; await loadSharedBookings(); await loadSharedWaitlist(); }
   render();
 });
 

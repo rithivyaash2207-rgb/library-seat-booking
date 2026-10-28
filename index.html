@@ -493,15 +493,20 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
   /* Keep the ground-floor map at a readable layout width on phones.
      The map scrolls horizontally instead of squeezing tables together. */
   @media (max-width: 768px) {
-    .zone:has(.floor-map) {
+    .map-zone {
+      min-width: 0;
+      max-width: 100%;
+      box-sizing: border-box;
       overflow-x: auto;
       overscroll-behavior-x: contain;
       -webkit-overflow-scrolling: touch;
       padding: 14px;
     }
-    .floor-map {
+    .map-zone .floor-map {
       width: 900px;
       min-width: 900px;
+      max-width: none;
+      box-sizing: border-box;
       grid-template-columns: minmax(130px, 1.15fr) repeat(3, minmax(140px, 1fr)) 16px 70px;
       grid-template-rows: 120px 190px 190px 150px 60px;
       gap: 16px;
@@ -1079,7 +1084,7 @@ function tableHTML(seats, kind) {
 function zoneHTML(zone, seats) {
   if (zone.type === "map") {
     const group = id => seats.filter(s => s.mapGroup === id);
-    return `<div class="floor-map" aria-label="Ground floor layout">
+    return `<div class="zone map-zone"><div class="floor-map" aria-label="Ground floor layout">
       <div class="map-area map-cabins-top">
         <div class="map-label">SINGLE CABINS</div>
         <div class="cabin-line">
@@ -1103,7 +1108,7 @@ function zoneHTML(zone, seats) {
       <div class="map-divider" aria-hidden="true"><div class="divider-line"></div></div>
       <div class="map-entrance">ENTRANCE</div>
       <div class="map-side-cabins" aria-label="Single cabins">${group("rightCabins").map(s => `<div class="map-side-cabin">${seatHTML(s)}</div>`).join("")}</div>
-    </div>`;
+    </div></div>`;
   }
   if (zone.type === "rows") {
     const rowsHTML = zone.rows.map(row => `<div class="row"><span class="row-label">${row}</span><div class="row-seats">${seats.filter(s => s.label.startsWith(row)).map(seatHTML).join("")}</div></div>`).join("");

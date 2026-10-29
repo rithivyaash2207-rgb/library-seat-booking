@@ -532,6 +532,86 @@ button, [role="button"], .btn, .btn-secondary, .queue-join-button, .queue-leave-
     .cabin-line { grid-template-columns: repeat(10, minmax(0, 1fr)); }
   }
 
+
+@media (max-width: 768px) {
+  .map-zone {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    padding: 6px !important;
+  }
+
+  .map-zone .floor-map {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-rows: 64px 104px 104px 84px 34px;
+    gap: 4px;
+    padding: 6px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .floor-map .map-area,
+  .floor-map .map-cabins-top,
+  .floor-map .map-side-cabins,
+  .floor-map .map-side-cabin,
+  .floor-map .map-table {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 3px;
+    gap: 3px;
+  }
+
+  .floor-map .seat {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    min-height: 18px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border-radius: 4px;
+    box-sizing: border-box;
+  }
+
+  .floor-map .map-label {
+    font-size: 8px !important;
+    line-height: 1.1;
+    overflow-wrap: anywhere;
+  }
+
+  .floor-map .cabin-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 3px;
+  }
+
+  .floor-map .cabin {
+    min-width: 0;
+    padding: 1px;
+  }
+
+  .floor-map .map-side-cabins {
+    gap: 3px;
+  }
+
+  .floor-map .map-side-cabin {
+    padding: 1px;
+  }
+
+  .floor-map .map-table .seat {
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+    min-height: 16px !important;
+  }
+}
+
 </style>
 </head>
 <body>
@@ -1203,8 +1283,7 @@ function ticketHTML() {
   return `<div class="dashboard">
     <section class="dash-card">
       <div class="ticket-card-head">
-        <h2 class="dash-title">TICKET</h2>
-        ${queueToggle}
+        <h2 class="dash-title">ACTIVE BOOKING</h2>
       </div>
       <div class="student-row">
         ${state.editingStudentName 
@@ -1216,8 +1295,8 @@ function ticketHTML() {
       </div>
       ${state.notice ? `<div class="notice ${escapeHTML(state.noticeType)}">${escapeHTML(state.notice)}</div>` : ""}
       ${ticket}
+      ${queueEntries.length ? `<section class="queue-status-card" style="margin-top:16px"><div class="queue-card-head"><h2 class="dash-title">WAITING LIST</h2><span class="status-pill warning">${queueEntries.length} ACTIVE</span></div>${queueHTML}</section>` : ""}
     </section>
-    ${queuePanel}
   </div>`;
 }
 
